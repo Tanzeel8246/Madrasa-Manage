@@ -87,7 +87,7 @@ export const usePendingUserRoles = () => {
   });
 
   return {
-    pendingRoles,
+    pendingRoles: pendingRoles || [],
     isLoading,
     createPendingRole,
     deletePendingRole,
