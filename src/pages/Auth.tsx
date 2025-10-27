@@ -18,7 +18,9 @@ const Auth = () => {
   const [madrasaName, setMadrasaName] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
-  const { signIn, signUp, signInWithGoogle, user } = useAuth();
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [resetEmail, setResetEmail] = useState("");
+  const { signIn, signUp, signInWithGoogle, resetPassword, user } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -45,6 +47,62 @@ const Auth = () => {
     await signInWithGoogle();
     setIsGoogleLoading(false);
   };
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    await resetPassword(resetEmail);
+    setIsLoading(false);
+    setShowForgotPassword(false);
+    setResetEmail("");
+  };
+
+  if (showForgotPassword) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="space-y-1 text-center">
+            <div className="flex justify-center mb-4">
+              <div className="bg-primary p-3 rounded-full">
+                <GraduationCap className="h-8 w-8 text-primary-foreground" />
+              </div>
+            </div>
+            <CardTitle className="text-2xl font-bold">پاس ورڈ بھول گئے؟</CardTitle>
+            <CardDescription>
+              اپنا ای میل درج کریں اور ہم آپ کو پاس ورڈ ری سیٹ لنک بھیج دیں گے
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleForgotPassword} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="reset-email">ای میل</Label>
+                <Input
+                  id="reset-email"
+                  type="email"
+                  placeholder="your@email.com"
+                  value={resetEmail}
+                  onChange={(e) => setResetEmail(e.target.value)}
+                  required
+                  dir="ltr"
+                />
+              </div>
+              <Button type="submit" className="w-full" disabled={isLoading}>
+                {isLoading ? "بھیجا جا رہا ہے..." : "ری سیٹ لنک بھیجیں"}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full"
+                onClick={() => setShowForgotPassword(false)}
+              >
+                لاگ ان پر واپس جائیں
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
@@ -134,6 +192,14 @@ const Auth = () => {
                 </div>
                 <Button type="submit" className="w-full" disabled={isLoading}>
                   {isLoading ? "جاری ہے..." : "لاگ ان کریں"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="link"
+                  className="w-full text-sm text-muted-foreground"
+                  onClick={() => setShowForgotPassword(true)}
+                >
+                  پاس ورڈ بھول گئے؟
                 </Button>
               </form>
             </TabsContent>

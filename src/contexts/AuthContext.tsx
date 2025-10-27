@@ -12,6 +12,7 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signInWithGoogle: () => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
+  resetPassword: (email: string) => Promise<{ error: Error | null }>;
   isAdmin: boolean;
   madrasaName: string | null;
   logoUrl: string | null;
@@ -175,8 +176,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const resetPassword = async (email: string) => {
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+
+      if (error) throw error;
+
+      toast.success('پاس ورڈ ری سیٹ لنک آپ کی ای میل پر بھیج دیا گیا ہے');
+      return { error: null };
+    } catch (error: any) {
+      const message = error.message || 'پاس ورڈ ری سیٹ میں ناکامی';
+      toast.error(message);
+      return { error };
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, session, isLoading, signUp, signIn, signInWithGoogle, signOut, isAdmin, madrasaName, logoUrl }}>
+    <AuthContext.Provider value={{ user, session, isLoading, signUp, signIn, signInWithGoogle, signOut, resetPassword, isAdmin, madrasaName, logoUrl }}>
       {children}
     </AuthContext.Provider>
   );
