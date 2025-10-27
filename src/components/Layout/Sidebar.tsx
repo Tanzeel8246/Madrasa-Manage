@@ -1,14 +1,15 @@
 import { Link, useLocation } from "react-router-dom";
-import { BookOpen, Users, GraduationCap, ClipboardCheck, LayoutDashboard, BookMarked, FileText, DollarSign, Shield, X } from "lucide-react";
+import { BookOpen, Users, GraduationCap, ClipboardCheck, LayoutDashboard, BookMarked, FileText, DollarSign, Shield, X, User as UserIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
 import { useState, useEffect } from "react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 export default function Sidebar() {
   const location = useLocation();
   const { t } = useTranslation();
-  const { isAdmin } = useAuth();
+  const { isAdmin, madrasaName, logoUrl } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
 
   const navigation = [
@@ -21,6 +22,7 @@ export default function Sidebar() {
     { name: t('learningReport'), href: "/education-reports", icon: FileText },
     { name: t('fees'), href: "/fees", icon: DollarSign },
     ...(isAdmin ? [{ name: t('userRoles'), href: "/user-roles", icon: Shield }] : []),
+    { name: t('myAccount') || 'My Account', href: "/my-account", icon: UserIcon },
   ];
 
   // Close sidebar on route change (mobile)
@@ -58,11 +60,20 @@ export default function Sidebar() {
         <div className="flex h-full flex-col overflow-y-auto">
           {/* Logo */}
           <div className="flex h-16 md:h-20 items-center gap-3 border-b border-sidebar-border px-4 md:px-6">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sidebar-primary">
-              <BookOpen className="h-6 w-6 text-sidebar-primary-foreground" />
-            </div>
-            <div className="flex-1">
-              <h1 className="text-base md:text-lg font-bold text-sidebar-foreground">{t('appTitle')}</h1>
+            <Avatar className="h-10 w-10">
+              <AvatarImage src={logoUrl || ''} alt={madrasaName || 'Madrasa'} />
+              <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground">
+                {logoUrl ? (
+                  <BookOpen className="h-6 w-6" />
+                ) : (
+                  <BookOpen className="h-6 w-6" />
+                )}
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex-1 min-w-0">
+              <h1 className="text-base md:text-lg font-bold text-sidebar-foreground truncate">
+                {madrasaName || t('appTitle')}
+              </h1>
               <p className="text-xs text-sidebar-foreground/70">{t('appSubtitle')}</p>
             </div>
             {/* Mobile close button */}

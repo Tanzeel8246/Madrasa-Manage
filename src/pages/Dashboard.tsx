@@ -7,9 +7,11 @@ import { useStudents } from "@/hooks/useStudents";
 import { useTeachers } from "@/hooks/useTeachers";
 import { useClasses } from "@/hooks/useClasses";
 import { useAttendance } from "@/hooks/useAttendance";
+import { useNavigate } from "react-router-dom";
 
 export default function Dashboard() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { students } = useStudents();
   const { teachers } = useTeachers();
   const { classes } = useClasses();
@@ -111,7 +113,7 @@ export default function Dashboard() {
                 </div>
               ))}
             </div>
-            <Button className="mt-4 w-full" variant="outline">
+            <Button className="mt-4 w-full" variant="outline" onClick={() => navigate('/classes')}>
               View All Classes
             </Button>
           </CardContent>
@@ -140,7 +142,7 @@ export default function Dashboard() {
                 </div>
               ))}
             </div>
-            <Button className="mt-4 w-full" variant="outline">
+            <Button className="mt-4 w-full" variant="outline" onClick={() => navigate('/students')}>
               View All Activity
             </Button>
           </CardContent>
@@ -155,19 +157,19 @@ export default function Dashboard() {
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Button className="h-auto flex-col gap-2 py-4" variant="outline">
+            <Button className="h-auto flex-col gap-2 py-4" variant="outline" onClick={() => navigate('/students')}>
               <Users className="h-6 w-6" />
               <span>Add Student</span>
             </Button>
-            <Button className="h-auto flex-col gap-2 py-4" variant="outline">
+            <Button className="h-auto flex-col gap-2 py-4" variant="outline" onClick={() => navigate('/teachers')}>
               <GraduationCap className="h-6 w-6" />
               <span>Add Teacher</span>
             </Button>
-            <Button className="h-auto flex-col gap-2 py-4" variant="outline">
+            <Button className="h-auto flex-col gap-2 py-4" variant="outline" onClick={() => navigate('/classes')}>
               <BookOpen className="h-6 w-6" />
               <span>Create Class</span>
             </Button>
-            <Button className="h-auto flex-col gap-2 py-4" variant="outline">
+            <Button className="h-auto flex-col gap-2 py-4" variant="outline" onClick={() => navigate('/attendance')}>
               <ClipboardCheck className="h-6 w-6" />
               <span>Mark Attendance</span>
             </Button>

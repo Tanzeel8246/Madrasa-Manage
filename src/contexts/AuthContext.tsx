@@ -14,6 +14,7 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   isAdmin: boolean;
   madrasaName: string | null;
+  logoUrl: string | null;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -24,6 +25,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [madrasaName, setMadrasaName] = useState<string | null>(null);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -76,15 +78,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsAdmin(false);
       }
 
-      // Fetch madrasa name from profile
+      // Fetch madrasa name and logo from profile
       const { data: profileData } = await supabase
         .from('profiles')
-        .select('madrasa_name')
+        .select('madrasa_name, logo_url')
         .eq('id', userId)
         .maybeSingle();
       
       if (profileData?.madrasa_name) {
         setMadrasaName(profileData.madrasa_name);
+      }
+      if (profileData?.logo_url) {
+        setLogoUrl(profileData.logo_url);
       }
     } catch (error) {
       setIsAdmin(false);
@@ -171,7 +176,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, isLoading, signUp, signIn, signInWithGoogle, signOut, isAdmin, madrasaName }}>
+    <AuthContext.Provider value={{ user, session, isLoading, signUp, signIn, signInWithGoogle, signOut, isAdmin, madrasaName, logoUrl }}>
       {children}
     </AuthContext.Provider>
   );
