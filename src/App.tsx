@@ -15,6 +15,9 @@ import Attendance from "./pages/Attendance";
 import Courses from "./pages/Courses";
 import EducationReports from "./pages/EducationReports";
 import Fees from "./pages/Fees";
+import Income from "./pages/Income";
+import Expenses from "./pages/Expenses";
+import Staff from "./pages/Staff";
 import UserRoles from "./pages/UserRoles";
 import MyAccount from "./pages/MyAccount";
 import Auth from "./pages/Auth";
@@ -49,6 +52,9 @@ const App = () => (
                           <Route path="/courses" element={<Courses />} />
                           <Route path="/education-reports" element={<EducationReports />} />
                           <Route path="/fees" element={<Fees />} />
+                          <Route path="/income" element={<Income />} />
+                          <Route path="/expenses" element={<Expenses />} />
+                          <Route path="/staff" element={<Staff />} />
                           <Route path="/user-roles" element={<UserRoles />} />
                           <Route path="/my-account" element={<MyAccount />} />
                           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

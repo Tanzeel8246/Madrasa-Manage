@@ -226,6 +226,54 @@ export type Database = {
           },
         ]
       }
+      expense_records: {
+        Row: {
+          amount: number
+          category: Database["public"]["Enums"]["expense_category"]
+          created_at: string
+          created_by: string | null
+          date: string
+          description: string
+          id: string
+          madrasa_name: string | null
+          paid_to: string
+          payment_method: Database["public"]["Enums"]["payment_method"]
+          receipt_url: string | null
+          updated_at: string
+          voucher_number: string | null
+        }
+        Insert: {
+          amount: number
+          category: Database["public"]["Enums"]["expense_category"]
+          created_at?: string
+          created_by?: string | null
+          date?: string
+          description: string
+          id?: string
+          madrasa_name?: string | null
+          paid_to: string
+          payment_method?: Database["public"]["Enums"]["payment_method"]
+          receipt_url?: string | null
+          updated_at?: string
+          voucher_number?: string | null
+        }
+        Update: {
+          amount?: number
+          category?: Database["public"]["Enums"]["expense_category"]
+          created_at?: string
+          created_by?: string | null
+          date?: string
+          description?: string
+          id?: string
+          madrasa_name?: string | null
+          paid_to?: string
+          payment_method?: Database["public"]["Enums"]["payment_method"]
+          receipt_url?: string | null
+          updated_at?: string
+          voucher_number?: string | null
+        }
+        Relationships: []
+      }
       fees: {
         Row: {
           academic_year: string
@@ -268,6 +316,57 @@ export type Database = {
           status?: string
           student_id?: string
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      income_records: {
+        Row: {
+          amount: number
+          created_at: string
+          created_by: string | null
+          date: string
+          donor_contact: string | null
+          donor_email: string | null
+          donor_name: string
+          id: string
+          income_type: Database["public"]["Enums"]["income_type"]
+          madrasa_name: string | null
+          notes: string | null
+          payment_method: Database["public"]["Enums"]["payment_method"]
+          receipt_number: string | null
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          created_by?: string | null
+          date?: string
+          donor_contact?: string | null
+          donor_email?: string | null
+          donor_name: string
+          id?: string
+          income_type: Database["public"]["Enums"]["income_type"]
+          madrasa_name?: string | null
+          notes?: string | null
+          payment_method?: Database["public"]["Enums"]["payment_method"]
+          receipt_number?: string | null
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          created_by?: string | null
+          date?: string
+          donor_contact?: string | null
+          donor_email?: string | null
+          donor_name?: string
+          id?: string
+          income_type?: Database["public"]["Enums"]["income_type"]
+          madrasa_name?: string | null
+          notes?: string | null
+          payment_method?: Database["public"]["Enums"]["payment_method"]
+          receipt_number?: string | null
+          updated_at?: string
         }
         Relationships: []
       }
@@ -324,6 +423,69 @@ export type Database = {
           id?: string
           logo_url?: string | null
           madrasa_name?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      staff_members: {
+        Row: {
+          account_number: string | null
+          address: string | null
+          bank_name: string | null
+          cnic: string | null
+          contact: string
+          created_at: string
+          designation: string
+          email: string | null
+          father_name: string | null
+          id: string
+          joining_date: string
+          madrasa_name: string | null
+          name: string
+          photo_url: string | null
+          qualification: string | null
+          salary: number
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          account_number?: string | null
+          address?: string | null
+          bank_name?: string | null
+          cnic?: string | null
+          contact: string
+          created_at?: string
+          designation: string
+          email?: string | null
+          father_name?: string | null
+          id?: string
+          joining_date: string
+          madrasa_name?: string | null
+          name: string
+          photo_url?: string | null
+          qualification?: string | null
+          salary: number
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          account_number?: string | null
+          address?: string | null
+          bank_name?: string | null
+          cnic?: string | null
+          contact?: string
+          created_at?: string
+          designation?: string
+          email?: string | null
+          father_name?: string | null
+          id?: string
+          joining_date?: string
+          madrasa_name?: string | null
+          name?: string
+          photo_url?: string | null
+          qualification?: string | null
+          salary?: number
+          status?: string
           updated_at?: string
         }
         Relationships: []
@@ -457,6 +619,26 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "teacher" | "student" | "manager" | "parent"
+      expense_category:
+        | "salary"
+        | "food"
+        | "electricity"
+        | "water"
+        | "gas"
+        | "construction"
+        | "repair"
+        | "stationery"
+        | "transport"
+        | "other"
+      income_type:
+        | "zakat"
+        | "sadaqat"
+        | "fitrana"
+        | "donation"
+        | "monthly_donation"
+        | "yearly_donation"
+        | "onetime_donation"
+      payment_method: "cash" | "bank_transfer" | "cheque" | "online"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -585,6 +767,28 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "teacher", "student", "manager", "parent"],
+      expense_category: [
+        "salary",
+        "food",
+        "electricity",
+        "water",
+        "gas",
+        "construction",
+        "repair",
+        "stationery",
+        "transport",
+        "other",
+      ],
+      income_type: [
+        "zakat",
+        "sadaqat",
+        "fitrana",
+        "donation",
+        "monthly_donation",
+        "yearly_donation",
+        "onetime_donation",
+      ],
+      payment_method: ["cash", "bank_transfer", "cheque", "online"],
     },
   },
 } as const
