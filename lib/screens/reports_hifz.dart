@@ -1066,7 +1066,7 @@ class _ReportsHifzPageState extends State<ReportsHifzPage> {
   Future<void> _printHifzPdf() async {
     try {
       final fontData =
-          await rootBundle.load('assets/fonts/NotoNaskhArabic-Regular.ttf');
+          await rootBundle.load('assets/fonts/JameelNooriNastaleeq.ttf');
       final fallbackData =
           await rootBundle.load('assets/fonts/Roboto-Regular.ttf');
       
@@ -1170,12 +1170,15 @@ class _ReportsHifzPageState extends State<ReportsHifzPage> {
                       style: bold, bgColor: PdfColors.grey200),
                 ])
               ]),
+              // Complaints
+              _hifzPdfCell("شکایات", 100,
+                  style: bold, bgColor: PdfColors.red300),
             ];
 
             List<pw.Widget> allRows = [
               pw.Row(
                   children: hdr,
-                  crossAxisAlignment: pw.CrossAxisAlignment.start)
+                  crossAxisAlignment: pw.CrossAxisAlignment.stretch)
             ];
 
             for (var h in _hifzRecords) {
@@ -1183,8 +1186,20 @@ class _ReportsHifzPageState extends State<ReportsHifzPage> {
               PdfColor sqCol = _getPdfStatusColor(h['sabqi_grade']);
               PdfColor mCol = _getPdfStatusColor(h['manzil_grade']);
 
+              String dtStr = h['date']?.toString() ?? '';
+              String sid = h['student_id']?.toString() ?? '';
+              var comps = _complaints.where((c) => c['student_id'].toString() == sid && (c['date'] == dtStr || dtStr.contains(c['date'] ?? ''))).toList();
+              String dailyComp = '-';
+              if (comps.isNotEmpty) {
+                dailyComp = comps.map((c) {
+                    String raw = c['complaint'] ?? '';
+                    final match = RegExp(r'^\[.*?\]\s*(.*)$', dotAll: true).firstMatch(raw);
+                    return match != null ? match.group(1) : raw;
+                }).join('\n');
+              }
+
               allRows.add(pw.Row(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  crossAxisAlignment: pw.CrossAxisAlignment.stretch,
                   children: [
                     if (!isIndiv)
                       _hifzPdfCell(
@@ -1207,6 +1222,8 @@ class _ReportsHifzPageState extends State<ReportsHifzPage> {
                     _hifzPdfCell(translateStatusClean(h['manzil_grade']), 50,
                         textColor: mCol),
                     _hifzPdfCell(h['manzil_listener']?.toString() ?? '-', 50),
+                    // Complaints
+                    _hifzPdfCell(cleanUrduString(dailyComp), 100),
                   ]));
             }
 
