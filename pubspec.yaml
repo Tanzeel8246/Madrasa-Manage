@@ -1,0 +1,65 @@
+name: madrasa_app
+description: "Madrasa Ashraf-ul-Madaris Management System"
+publish_to: 'none'
+version: 3.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # 🌟 ڈیٹا بیس، تاریخ اور ویب سرور کے لیے
+  sqflite: ^2.3.0
+  path: ^1.9.0
+  intl: ^0.19.0
+  http: ^1.1.0 
+  webview_flutter: ^4.10.0 # 🌟 ویب سائٹ ہوم کے لیے ایڈ کیا
+
+  # 🌟 خوبصورت فونٹس (اردو اور انگلش) کے لیے
+  google_fonts: ^6.1.0 # 🌟 یہ مسنگ تھا، اب ایڈ کر دیا
+
+  # 🌟 وائس ٹائپنگ اور سکرین شاٹ کے لیے
+  speech_to_text: ^7.3.0
+  permission_handler: ^11.3.1
+  screenshot: ^3.0.0
+  path_provider: ^2.1.3
+  share_plus: ^10.1.3
+  flutter_secure_storage: ^9.2.2
+
+  cupertino_icons: ^1.0.6
+  image_picker: ^1.2.1
+  url_launcher: ^6.3.2
+  pdf: ^3.12.0
+  printing: ^5.14.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  flutter_native_splash: ^2.4.0
+
+flutter_native_splash:
+  color: "#284D3D"
+  image: assets/logo_white.png
+  android_12:
+    image: assets/logo_white.png
+    color: "#284D3D"
+  fullscreen: true
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/
+
+  fonts:
+    - family: JameelNooriNastaleeq
+      fonts:
+        - asset: assets/fonts/JameelNooriNastaleeq.ttf
+    - family: NotoNaskhArabic
+      fonts:
+        - asset: assets/fonts/NotoNaskhArabic-Regular.ttf
+    - family: Roboto
+      fonts:
+        - asset: assets/fonts/Roboto-Regular.ttf

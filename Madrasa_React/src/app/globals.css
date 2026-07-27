@@ -1,0 +1,74 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400..700&display=swap');
+@import 'tailwindcss';
+
+@font-face {
+  font-family: 'Jameel Noori Nastaleeq';
+  src: url('https://cdn.jsdelivr.net/gh/haideralishah/urdu-web-fonts@master/jameel-noori-nastaleeq/JameelNooriNastaleeq.woff2') format('woff2'),
+       url('https://cdn.jsdelivr.net/gh/haideralishah/urdu-web-fonts@master/jameel-noori-nastaleeq/JameelNooriNastaleeq.woff') format('woff'),
+       url('https://cdn.jsdelivr.net/gh/haideralishah/urdu-web-fonts@master/jameel-noori-nastaleeq/JameelNooriNastaleeq.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@theme {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  
+  --color-theme-primary: var(--theme-primary);
+  --color-theme-hover: var(--theme-hover);
+  --color-theme-light: var(--theme-light);
+}
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  
+  /* Default Theme (Indigo) */
+  --theme-primary: #4f46e5;
+  --theme-hover: #4338ca;
+  --theme-light: #e0e7ff;
+}
+
+/* Dark mode basic variables */
+.dark {
+  --background: #0f172a;
+  --foreground: #f8fafc;
+}
+
+[data-theme='emerald'] {
+  --theme-primary: #059669;
+  --theme-hover: #047857;
+  --theme-light: #d1fae5;
+}
+
+[data-theme='amber'] {
+  --theme-primary: #d97706;
+  --theme-hover: #b45309;
+  --theme-light: #fef3c7;
+}
+
+[data-theme='rose'] {
+  --theme-primary: #e11d48;
+  --theme-hover: #be123c;
+  --theme-light: #ffe4e6;
+}
+
+[data-theme='purple'] {
+  --theme-primary: #7e22ce;
+  --theme-hover: #6b21a8;
+  --theme-light: #f3e8ff;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+}
+
+/* Nastaliq Font support for Urdu (Jameel Noori Preferred) */
+.font-urdu {
+  font-family: 'Jameel Noori Nastaleeq', 'Noto Nastaliq Urdu', serif;
+  line-height: 2.2; /* Nastaliq requires more line height */
+}
