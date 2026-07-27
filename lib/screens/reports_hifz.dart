@@ -1066,7 +1066,7 @@ class _ReportsHifzPageState extends State<ReportsHifzPage> {
   Future<void> _printHifzPdf() async {
     try {
       final fontData =
-          await rootBundle.load('assets/fonts/JameelNooriNastaleeq.ttf');
+          await rootBundle.load('assets/fonts/NotoNaskhArabic-Regular.ttf');
       final fallbackData =
           await rootBundle.load('assets/fonts/Roboto-Regular.ttf');
       
