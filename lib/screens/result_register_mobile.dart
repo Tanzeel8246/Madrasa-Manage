@@ -1542,7 +1542,7 @@ class _ResultRegisterMobilePageState extends State<ResultRegisterMobilePage> {
                               ),
                             ),
                           ),
-                        ])))))));
+                        ]))))))));
   }
 
   Widget _pdfSummaryItem(String label, String value, Color color) {

@@ -1328,7 +1328,7 @@ class _ReportsHifzPageState extends State<ReportsHifzPage> {
           ),
         ),
       ),
-    );
+    ));
   }
 
   Widget _nativeHeaderBlock(String text, double w, {Color? bgColor}) {
