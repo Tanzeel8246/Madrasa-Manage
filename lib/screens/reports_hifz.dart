@@ -1070,20 +1070,48 @@ class _ReportsHifzPageState extends State<ReportsHifzPage> {
       if (!mounted) return;
       setState(() => isLoading = true);
 
-      int rowsPerPageFirst = 13;
-      int rowsPerPageNormal = 15;
-
       List<List<Map<String, dynamic>>> chunks = [];
-      int currentIndex = 0;
+      List<Map<String, dynamic>> currentChunk = [];
+      double currentHeight = 0;
+      bool isFirstPage = true;
 
-      while (currentIndex < _hifzRecords.length) {
-        int nextChunkSize =
-            (chunks.isEmpty) ? rowsPerPageFirst : rowsPerPageNormal;
-        if (currentIndex + nextChunkSize > _hifzRecords.length) {
-          nextChunkSize = _hifzRecords.length - currentIndex;
+      for (var h in _hifzRecords) {
+        double maxPageHeight = isFirstPage ? 520.0 : 640.0;
+        
+        String dtStr = h['date']?.toString() ?? '';
+        String sid = h['student_id']?.toString() ?? '';
+        var comps = _complaints.where((c) =>
+                c['student_id'].toString() == sid &&
+                (c['date'] == dtStr || dtStr.contains(c['date'] ?? '')))
+            .toList();
+        String dailyComp = '-';
+        if (comps.isNotEmpty) {
+          dailyComp = comps.map((c) {
+            String raw = c['complaint'] ?? '';
+            final match = RegExp(r'^\[.*?\]\s*(.*)$', dotAll: true).firstMatch(raw);
+            return match != null ? match.group(1) : raw;
+          }).join('\n');
         }
-        chunks.add(_hifzRecords.sublist(currentIndex, currentIndex + nextChunkSize));
-        currentIndex += nextChunkSize;
+        
+        int compLines = dailyComp.split('\n').length;
+        int manzilLines = (h['manzil_details']?.toString() ?? '').split('\n').length;
+        int maxLines = compLines > manzilLines ? compLines : manzilLines;
+        
+        double rowHeight = 40.0 + (maxLines > 1 ? (maxLines - 1) * 18.0 : 0);
+        
+        if (currentChunk.isNotEmpty && currentHeight + rowHeight > maxPageHeight) {
+          chunks.add(List.from(currentChunk));
+          currentChunk.clear();
+          currentHeight = 0;
+          isFirstPage = false;
+        }
+        
+        currentChunk.add(h);
+        currentHeight += rowHeight;
+      }
+      
+      if (currentChunk.isNotEmpty) {
+        chunks.add(currentChunk);
       }
 
       if (chunks.isEmpty) {
@@ -1107,7 +1135,7 @@ class _ReportsHifzPageState extends State<ReportsHifzPage> {
           pageWidget,
           delay: const Duration(milliseconds: 200),
           targetSize: const Size(1122, 793),
-          pixelRatio: 3.0,
+          pixelRatio: 1.5,
         );
 
         pdf.addPage(pw.Page(

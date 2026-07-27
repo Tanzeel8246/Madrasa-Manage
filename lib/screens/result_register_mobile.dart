@@ -1189,26 +1189,28 @@ class _ResultRegisterMobilePageState extends State<ResultRegisterMobilePage> {
         });
       }
 
-      const int rowsPerPageFirst = 13;
-      const int rowsPerPageNormal = 16;
-
       List<List<Map<String, dynamic>>> chunks = [];
-      int currentIndex = 0;
+      List<Map<String, dynamic>> currentChunk = [];
+      double currentHeight = 0;
+      bool isFirstPage = true;
 
-      if (results.isNotEmpty) {
-        int firstChunkSize = results.length > rowsPerPageFirst
-            ? rowsPerPageFirst
-            : results.length;
-        chunks.add(results.sublist(0, firstChunkSize));
-        currentIndex = firstChunkSize;
+      for (var r in results) {
+        double maxPageHeight = isFirstPage ? 480.0 : 640.0;
+        double rowHeight = 35.0; // Result register rows are single-line and fixed height
+        
+        if (currentChunk.isNotEmpty && currentHeight + rowHeight > maxPageHeight) {
+          chunks.add(List.from(currentChunk));
+          currentChunk.clear();
+          currentHeight = 0;
+          isFirstPage = false;
+        }
+        
+        currentChunk.add(r);
+        currentHeight += rowHeight;
       }
-
-      while (currentIndex < results.length) {
-        int nextChunkSize = (results.length - currentIndex) > rowsPerPageNormal
-            ? rowsPerPageNormal
-            : (results.length - currentIndex);
-        chunks.add(results.sublist(currentIndex, currentIndex + nextChunkSize));
-        currentIndex += nextChunkSize;
+      
+      if (currentChunk.isNotEmpty) {
+        chunks.add(currentChunk);
       }
 
       if (chunks.isEmpty) {
@@ -1238,7 +1240,7 @@ class _ResultRegisterMobilePageState extends State<ResultRegisterMobilePage> {
           pageWidget,
           delay: const Duration(milliseconds: 200),
           targetSize: const Size(1122, 793), // A4 Landscape size
-          pixelRatio: 3.0, // High-Resolution rendering for Print Quality
+          pixelRatio: 1.5, // High-Resolution rendering for Print Quality
         );
 
         pdf.addPage(pw.Page(
