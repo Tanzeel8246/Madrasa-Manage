@@ -1120,23 +1120,23 @@ class _ReportsHifzPageState extends State<ReportsHifzPage> {
               ]),
           build: (pw.Context context) {
             bool isIndiv = selectedStudentId != null;
-            // Header Row
+            // Header Row (Left-To-Right Order!)
             List<pw.Widget> hdr = [
-              if (!isIndiv)
-                _hifzPdfCell("طالب علم", 90,
-                    style: bold, bgColor: PdfColors.grey300),
-              _hifzPdfCell("تاریخ", 60,
-                  style: bold, bgColor: PdfColors.grey300),
-              // Sabaq
+              // Complaints
+              _hifzPdfCell("شکایات", 100,
+                  style: bold, bgColor: PdfColors.red300),
+              // Manzil
               pw.Column(children: [
-                _hifzPdfCell("سبق (نیا)", 130,
-                    style: bold, bgColor: PdfColors.green300),
+                _hifzPdfCell("منزل (پختہ)", 210,
+                    style: bold, bgColor: PdfColors.orange300),
                 pw.Row(children: [
-                  _hifzPdfCell("پارہ", 40,
-                      style: bold, bgColor: PdfColors.grey200),
-                  _hifzPdfCell("لائنیں", 40,
+                  _hifzPdfCell("سننے والا", 50,
                       style: bold, bgColor: PdfColors.grey200),
                   _hifzPdfCell("کیفیت", 50,
+                      style: bold, bgColor: PdfColors.grey200),
+                  _hifzPdfCell("مقدار", 50,
+                      style: bold, bgColor: PdfColors.grey200),
+                  _hifzPdfCell("تفصیل", 60,
                       style: bold, bgColor: PdfColors.grey200),
                 ])
               ]),
@@ -1145,58 +1145,66 @@ class _ReportsHifzPageState extends State<ReportsHifzPage> {
                 _hifzPdfCell("سبقی (پچھلا سبق)", 190,
                     style: bold, bgColor: PdfColors.blue300),
                 pw.Row(children: [
+                  _hifzPdfCell("سننے والا", 50,
+                      style: bold, bgColor: PdfColors.grey200),
+                  _hifzPdfCell("کیفیت", 50,
+                      style: bold, bgColor: PdfColors.grey200),
+                  _hifzPdfCell("مقدار", 50,
+                      style: bold, bgColor: PdfColors.grey200),
                   _hifzPdfCell("پارہ", 40,
                       style: bold, bgColor: PdfColors.grey200),
-                  _hifzPdfCell("مقدار", 50,
-                      style: bold, bgColor: PdfColors.grey200),
-                  _hifzPdfCell("کیفیت", 50,
-                      style: bold, bgColor: PdfColors.grey200),
-                  _hifzPdfCell("سننے والا", 50,
-                      style: bold, bgColor: PdfColors.grey200),
                 ])
               ]),
-              // Manzil
+              // Sabaq
               pw.Column(children: [
-                _hifzPdfCell("منزل (پختہ)", 210,
-                    style: bold, bgColor: PdfColors.orange300),
+                _hifzPdfCell("سبق (نیا)", 130,
+                    style: bold, bgColor: PdfColors.green300),
                 pw.Row(children: [
-                  _hifzPdfCell("تفصیل", 60,
-                      style: bold, bgColor: PdfColors.grey200),
-                  _hifzPdfCell("مقدار", 50,
-                      style: bold, bgColor: PdfColors.grey200),
                   _hifzPdfCell("کیفیت", 50,
                       style: bold, bgColor: PdfColors.grey200),
-                  _hifzPdfCell("سننے والا", 50,
+                  _hifzPdfCell("لائنیں", 40,
+                      style: bold, bgColor: PdfColors.grey200),
+                  _hifzPdfCell("پارہ", 40,
                       style: bold, bgColor: PdfColors.grey200),
                 ])
               ]),
-              // Complaints
-              _hifzPdfCell("شکایات", 100,
-                  style: bold, bgColor: PdfColors.red300),
+              _hifzPdfCell("تاریخ", 60,
+                  style: bold, bgColor: PdfColors.grey300),
+              if (!isIndiv)
+                _hifzPdfCell("طالب علم", 90,
+                    style: bold, bgColor: PdfColors.grey300),
             ];
 
             List<pw.Widget> allRows = [
-              pw.Row(
+              pw.Directionality(
+                textDirection: pw.TextDirection.ltr,
+                child: pw.Row(
                   children: hdr,
-                  crossAxisAlignment: pw.CrossAxisAlignment.start)
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                ),
+              )
             ];
 
             Map<int, pw.TableColumnWidth> colWidths = {};
             int colIdx = 0;
-            if (!isIndiv) colWidths[colIdx++] = const pw.FixedColumnWidth(90);
-            colWidths[colIdx++] = const pw.FixedColumnWidth(60);
-            colWidths[colIdx++] = const pw.FixedColumnWidth(40);
-            colWidths[colIdx++] = const pw.FixedColumnWidth(40);
-            colWidths[colIdx++] = const pw.FixedColumnWidth(50);
-            colWidths[colIdx++] = const pw.FixedColumnWidth(40);
-            colWidths[colIdx++] = const pw.FixedColumnWidth(50);
-            colWidths[colIdx++] = const pw.FixedColumnWidth(50);
-            colWidths[colIdx++] = const pw.FixedColumnWidth(50);
-            colWidths[colIdx++] = const pw.FixedColumnWidth(60);
-            colWidths[colIdx++] = const pw.FixedColumnWidth(50);
-            colWidths[colIdx++] = const pw.FixedColumnWidth(50);
-            colWidths[colIdx++] = const pw.FixedColumnWidth(50);
-            colWidths[colIdx++] = const pw.FixedColumnWidth(100);
+            colWidths[colIdx++] = const pw.FixedColumnWidth(100); // Complaints
+            // Manzil
+            colWidths[colIdx++] = const pw.FixedColumnWidth(50); // Listener
+            colWidths[colIdx++] = const pw.FixedColumnWidth(50); // Grade
+            colWidths[colIdx++] = const pw.FixedColumnWidth(50); // Qty
+            colWidths[colIdx++] = const pw.FixedColumnWidth(60); // Details
+            // Sabqi
+            colWidths[colIdx++] = const pw.FixedColumnWidth(50); // Listener
+            colWidths[colIdx++] = const pw.FixedColumnWidth(50); // Grade
+            colWidths[colIdx++] = const pw.FixedColumnWidth(50); // Qty
+            colWidths[colIdx++] = const pw.FixedColumnWidth(40); // Para
+            // Sabaq
+            colWidths[colIdx++] = const pw.FixedColumnWidth(50); // Grade
+            colWidths[colIdx++] = const pw.FixedColumnWidth(40); // Lines
+            colWidths[colIdx++] = const pw.FixedColumnWidth(40); // Para
+            
+            colWidths[colIdx++] = const pw.FixedColumnWidth(60); // Date
+            if (!isIndiv) colWidths[colIdx++] = const pw.FixedColumnWidth(90); // Student
 
             List<pw.TableRow> tableRows = [];
 
@@ -1219,29 +1227,27 @@ class _ReportsHifzPageState extends State<ReportsHifzPage> {
 
               tableRows.add(pw.TableRow(
                   children: [
-                    if (!isIndiv)
-                      _hifzPdfCell(
-                          _getStudentName(h['student_id'].toString()), 90),
-                    _hifzPdfCell(h['date'] ?? '-', 60),
-                    // Sabaq
-                    _hifzPdfCell(cleanUrduString(h['sabaq_para']), 40),
-                    _hifzPdfCell(h['sabaq_lines'] ?? '-', 40),
-                    _hifzPdfCell(translateStatusClean(h['sabaq_grade']), 50,
-                        textColor: sCol),
-                    // Sabqi
-                    _hifzPdfCell(cleanUrduString(h['sabqi_para']), 40),
-                    _hifzPdfCell(translateQtyClean(h['sabqi_qty']), 50),
-                    _hifzPdfCell(translateStatusClean(h['sabqi_grade']), 50,
-                        textColor: sqCol),
-                    _hifzPdfCell(h['sabqi_listener']?.toString() ?? '-', 50),
-                    // Manzil
-                    _hifzPdfCell(cleanUrduString(h['manzil_details']), 60),
-                    _hifzPdfCell(translateQtyClean(h['manzil_total_qty']), 50),
-                    _hifzPdfCell(translateStatusClean(h['manzil_grade']), 50,
-                        textColor: mCol),
-                    _hifzPdfCell(h['manzil_listener']?.toString() ?? '-', 50),
                     // Complaints
                     _hifzPdfCell(cleanUrduString(dailyComp), 100),
+                    // Manzil
+                    _hifzPdfCell(h['manzil_listener']?.toString() ?? '-', 50),
+                    _hifzPdfCell(translateStatusClean(h['manzil_grade']), 50, textColor: mCol),
+                    _hifzPdfCell(translateQtyClean(h['manzil_total_qty']), 50),
+                    _hifzPdfCell(cleanUrduString(h['manzil_details']), 60),
+                    // Sabqi
+                    _hifzPdfCell(h['sabqi_listener']?.toString() ?? '-', 50),
+                    _hifzPdfCell(translateStatusClean(h['sabqi_grade']), 50, textColor: sqCol),
+                    _hifzPdfCell(translateQtyClean(h['sabqi_qty']), 50),
+                    _hifzPdfCell(cleanUrduString(h['sabqi_para']), 40),
+                    // Sabaq
+                    _hifzPdfCell(translateStatusClean(h['sabaq_grade']), 50, textColor: sCol),
+                    _hifzPdfCell(h['sabaq_lines'] ?? '-', 40),
+                    _hifzPdfCell(cleanUrduString(h['sabaq_para']), 40),
+                    // Date
+                    _hifzPdfCell(h['date'] ?? '-', 60),
+                    // Student
+                    if (!isIndiv)
+                      _hifzPdfCell(_getStudentName(h['student_id'].toString()), 90),
                   ]));
             }
 
