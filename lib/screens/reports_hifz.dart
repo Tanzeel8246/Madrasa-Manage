@@ -1178,8 +1178,27 @@ class _ReportsHifzPageState extends State<ReportsHifzPage> {
             List<pw.Widget> allRows = [
               pw.Row(
                   children: hdr,
-                  crossAxisAlignment: pw.CrossAxisAlignment.stretch)
+                  crossAxisAlignment: pw.CrossAxisAlignment.start)
             ];
+
+            Map<int, pw.TableColumnWidth> colWidths = {};
+            int colIdx = 0;
+            if (!isIndiv) colWidths[colIdx++] = const pw.FixedColumnWidth(90);
+            colWidths[colIdx++] = const pw.FixedColumnWidth(60);
+            colWidths[colIdx++] = const pw.FixedColumnWidth(40);
+            colWidths[colIdx++] = const pw.FixedColumnWidth(40);
+            colWidths[colIdx++] = const pw.FixedColumnWidth(50);
+            colWidths[colIdx++] = const pw.FixedColumnWidth(40);
+            colWidths[colIdx++] = const pw.FixedColumnWidth(50);
+            colWidths[colIdx++] = const pw.FixedColumnWidth(50);
+            colWidths[colIdx++] = const pw.FixedColumnWidth(50);
+            colWidths[colIdx++] = const pw.FixedColumnWidth(60);
+            colWidths[colIdx++] = const pw.FixedColumnWidth(50);
+            colWidths[colIdx++] = const pw.FixedColumnWidth(50);
+            colWidths[colIdx++] = const pw.FixedColumnWidth(50);
+            colWidths[colIdx++] = const pw.FixedColumnWidth(100);
+
+            List<pw.TableRow> tableRows = [];
 
             for (var h in _hifzRecords) {
               PdfColor sCol = _getPdfStatusColor(h['sabaq_grade']);
@@ -1198,8 +1217,7 @@ class _ReportsHifzPageState extends State<ReportsHifzPage> {
                 }).join('\n');
               }
 
-              allRows.add(pw.Row(
-                  crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+              tableRows.add(pw.TableRow(
                   children: [
                     if (!isIndiv)
                       _hifzPdfCell(
@@ -1227,6 +1245,11 @@ class _ReportsHifzPageState extends State<ReportsHifzPage> {
                   ]));
             }
 
+            allRows.add(pw.Table(
+              columnWidths: colWidths,
+              children: tableRows,
+            ));
+
             return allRows;
           }));
 
@@ -1251,10 +1274,12 @@ class _ReportsHifzPageState extends State<ReportsHifzPage> {
           color: bgColor,
           border: pw.Border.all(color: PdfColors.grey600, width: 0.5)),
       alignment: pw.Alignment.center,
-      child: pw.Text(text,
-          textAlign: pw.TextAlign.center,
-          style: style?.copyWith(color: textColor) ??
-              pw.TextStyle(fontSize: 8, color: textColor)),
+      child: pw.Center(
+        child: pw.Text(text,
+            textAlign: pw.TextAlign.center,
+            style: style?.copyWith(color: textColor) ??
+                pw.TextStyle(fontSize: 8, color: textColor)),
+      ),
     );
   }
 
