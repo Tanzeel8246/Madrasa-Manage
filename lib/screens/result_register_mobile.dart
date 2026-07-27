@@ -1240,7 +1240,7 @@ class _ResultRegisterMobilePageState extends State<ResultRegisterMobilePage> {
           pageWidget,
           delay: const Duration(milliseconds: 200),
           targetSize: const Size(1122, 793), // A4 Landscape size
-          pixelRatio: 1.5, // High-Resolution rendering for Print Quality
+          pixelRatio: 1.0, // High-Resolution rendering for Print Quality
         );
 
         pdf.addPage(pw.Page(
@@ -1288,24 +1288,25 @@ class _ResultRegisterMobilePageState extends State<ResultRegisterMobilePage> {
     const urduFont =
         TextStyle(fontFamily: 'JameelNooriNastaleeq', color: Colors.black);
 
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        fontFamily: 'JameelNooriNastaleeq',
-        textTheme: const TextTheme(
-          bodyMedium: TextStyle(color: Colors.black),
-          bodyLarge: TextStyle(color: Colors.black),
-          titleMedium: TextStyle(color: Colors.black),
-        ),
-      ),
-      home: Directionality(
-        textDirection: ui.TextDirection.rtl,
-        child: MediaQuery(
-            data: const MediaQueryData(size: Size(1122, 793)),
-            child: SizedBox(
-                width: 1122,
-                height: 793,
-                child: Material(
+    return Directionality(
+      textDirection: ui.TextDirection.rtl,
+      child: MediaQuery(
+          data: const MediaQueryData(size: Size(1122, 793)),
+          child: Theme(
+            data: ThemeData(
+              fontFamily: 'JameelNooriNastaleeq',
+              textTheme: const TextTheme(
+                bodyMedium: TextStyle(color: Colors.black),
+                bodyLarge: TextStyle(color: Colors.black),
+                titleMedium: TextStyle(color: Colors.black),
+              ),
+            ),
+            child: DefaultTextStyle(
+              style: const TextStyle(fontFamily: 'JameelNooriNastaleeq', color: Colors.black),
+              child: SizedBox(
+                  width: 1122,
+                  height: 793,
+                  child: Material(
                     color: Colors.white,
                     child: Container(
                         padding: const EdgeInsets.all(24),

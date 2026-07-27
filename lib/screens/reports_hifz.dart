@@ -1135,7 +1135,7 @@ class _ReportsHifzPageState extends State<ReportsHifzPage> {
           pageWidget,
           delay: const Duration(milliseconds: 200),
           targetSize: const Size(1122, 793),
-          pixelRatio: 1.5,
+          pixelRatio: 1.0,
         );
 
         pdf.addPage(pw.Page(
@@ -1176,18 +1176,19 @@ class _ReportsHifzPageState extends State<ReportsHifzPage> {
         TextStyle(fontFamily: 'JameelNooriNastaleeq', color: Colors.black);
     bool isIndiv = selectedStudentId != null;
 
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(fontFamily: 'JameelNooriNastaleeq'),
-      home: Directionality(
-        textDirection: TextDirection.rtl,
-        child: MediaQuery(
-          data: const MediaQueryData(size: Size(1122, 793)),
-          child: SizedBox(
-            width: 1122,
-            height: 793,
-            child: Material(
-              color: Colors.white,
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: MediaQuery(
+        data: const MediaQueryData(size: Size(1122, 793)),
+        child: Theme(
+          data: ThemeData(fontFamily: 'JameelNooriNastaleeq'),
+          child: DefaultTextStyle(
+            style: const TextStyle(fontFamily: 'JameelNooriNastaleeq', color: Colors.black),
+            child: SizedBox(
+              width: 1122,
+              height: 793,
+              child: Material(
+                color: Colors.white,
               child: Container(
                 padding: const EdgeInsets.all(24),
                 child: Column(
