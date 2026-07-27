@@ -12,6 +12,7 @@ import '../widgets/app_drawer.dart';
 import '../utils/sync_service.dart';
 import '../widgets/neo_box.dart';
 import '../utils/performance_helper.dart';
+import 'package:screenshot/screenshot.dart';
 import 'dashboard.dart';
 import 'filtered_hifz_report.dart';
 
@@ -31,6 +32,7 @@ class _ReportsHifzPageState extends State<ReportsHifzPage> {
   List<Map<String, dynamic>> _students = [];
   List<Map<String, dynamic>> _complaints = [];
   bool isLoading = true;
+  final ScreenshotController screenshotController = ScreenshotController();
   String? fromDate;
   String? toDate;
   String? selectedStudentId;
@@ -1065,231 +1067,304 @@ class _ReportsHifzPageState extends State<ReportsHifzPage> {
 
   Future<void> _printHifzPdf() async {
     try {
-      final fontData =
-          await rootBundle.load('assets/fonts/NotoNaskhArabic-Regular.ttf');
-      final fallbackData =
-          await rootBundle.load('assets/fonts/Roboto-Regular.ttf');
-      
-      final ttf = pw.Font.ttf(fontData);
-      final fallbackTtf = pw.Font.ttf(fallbackData);
-      
-      final bold = pw.TextStyle(font: ttf, fontFallback: [fallbackTtf], fontWeight: pw.FontWeight.bold);
-      final normal = pw.TextStyle(font: ttf, fontFallback: [fallbackTtf]);
+      if (!mounted) return;
+      setState(() => isLoading = true);
+
+      int rowsPerPageFirst = 13;
+      int rowsPerPageNormal = 15;
+
+      List<List<Map<String, dynamic>>> chunks = [];
+      int currentIndex = 0;
+
+      while (currentIndex < _hifzRecords.length) {
+        int nextChunkSize =
+            (chunks.isEmpty) ? rowsPerPageFirst : rowsPerPageNormal;
+        if (currentIndex + nextChunkSize > _hifzRecords.length) {
+          nextChunkSize = _hifzRecords.length - currentIndex;
+        }
+        chunks.add(_hifzRecords.sublist(currentIndex, currentIndex + nextChunkSize));
+        currentIndex += nextChunkSize;
+      }
+
+      if (chunks.isEmpty) {
+        setState(() => isLoading = false);
+        return;
+      }
 
       final pdf = pw.Document();
-      pdf.addPage(pw.MultiPage(
+
+      for (int i = 0; i < chunks.length; i++) {
+        final chunk = chunks[i];
+        final pageNum = i + 1;
+
+        final pageWidget = _buildPdfPageWidget(
+          chunk: chunk,
+          pageNum: pageNum,
+          totalPages: chunks.length,
+        );
+
+        final imageBytes = await screenshotController.captureFromWidget(
+          pageWidget,
+          delay: const Duration(milliseconds: 200),
+          targetSize: const Size(1122, 793),
+          pixelRatio: 3.0,
+        );
+
+        pdf.addPage(pw.Page(
           pageFormat: PdfPageFormat.a4.landscape,
-          textDirection: pw.TextDirection.rtl,
-          margin: const pw.EdgeInsets.all(15),
-          theme: pw.ThemeData.withFont(
-            base: ttf,
-            fontFallback: [fallbackTtf],
-          ),
-          header: (ctx) => pw.Column(children: [
-                pw.Container(
-                  padding: const pw.EdgeInsets.symmetric(vertical: 5),
-                  decoration: const pw.BoxDecoration(
-                      border: pw.Border(
-                          bottom:
-                              pw.BorderSide(color: PdfColors.black, width: 2))),
-                  child: pw.Row(
-                      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                      children: [
-                        pw.Text("مدرسہ اشرف المدارس — فاروقہ، سرگودھا",
-                            style: bold.copyWith(fontSize: 12)),
-                        pw.Text("حفظ تعلیمی رپورٹ",
-                            style: bold.copyWith(fontSize: 14)),
-                        pw.Text("مدت: $fromDate تا $toDate",
-                            style: normal.copyWith(fontSize: 9)),
-                      ]),
-                ),
-                pw.SizedBox(height: 5),
-                if (selectedStudentId != null)
-                  pw.Container(
-                    width: double.infinity,
-                    padding: const pw.EdgeInsets.all(5),
-                    decoration:
-                        const pw.BoxDecoration(color: PdfColors.grey200),
-                    child: pw.Row(children: [
-                      pw.Text("طالب علم: ", style: bold.copyWith(fontSize: 10)),
-                      pw.Text(_getStudentName(selectedStudentId!),
-                          style: normal.copyWith(fontSize: 10)),
-                    ]),
-                  ),
-                pw.SizedBox(height: 5),
-              ]),
+          margin: pw.EdgeInsets.zero,
           build: (pw.Context context) {
-            bool isIndiv = selectedStudentId != null;
-            // Header Row (RTL Order - fixes text breaking)
-            List<pw.Widget> hdr = [
-              if (!isIndiv)
-                _hifzPdfCell("طالب علم", 90,
-                    style: bold, bgColor: PdfColors.grey300),
-              _hifzPdfCell("تاریخ", 60,
-                  style: bold, bgColor: PdfColors.grey300),
-              // Sabaq
-              pw.Column(children: [
-                _hifzPdfCell("سبق (نیا)", 130,
-                    style: bold, bgColor: PdfColors.green300),
-                pw.Row(children: [
-                  _hifzPdfCell("پارہ", 40,
-                      style: bold, bgColor: PdfColors.grey200),
-                  _hifzPdfCell("لائنیں", 40,
-                      style: bold, bgColor: PdfColors.grey200),
-                  _hifzPdfCell("کیفیت", 50,
-                      style: bold, bgColor: PdfColors.grey200),
-                ])
-              ]),
-              // Sabqi
-              pw.Column(children: [
-                _hifzPdfCell("سبقی (پچھلا سبق)", 190,
-                    style: bold, bgColor: PdfColors.blue300),
-                pw.Row(children: [
-                  _hifzPdfCell("پارہ", 40,
-                      style: bold, bgColor: PdfColors.grey200),
-                  _hifzPdfCell("مقدار", 50,
-                      style: bold, bgColor: PdfColors.grey200),
-                  _hifzPdfCell("کیفیت", 50,
-                      style: bold, bgColor: PdfColors.grey200),
-                  _hifzPdfCell("سننے والا", 50,
-                      style: bold, bgColor: PdfColors.grey200),
-                ])
-              ]),
-              // Manzil
-              pw.Column(children: [
-                _hifzPdfCell("منزل (پختہ)", 210,
-                    style: bold, bgColor: PdfColors.orange300),
-                pw.Row(children: [
-                  _hifzPdfCell("تفصیل", 60,
-                      style: bold, bgColor: PdfColors.grey200),
-                  _hifzPdfCell("مقدار", 50,
-                      style: bold, bgColor: PdfColors.grey200),
-                  _hifzPdfCell("کیفیت", 50,
-                      style: bold, bgColor: PdfColors.grey200),
-                  _hifzPdfCell("سننے والا", 50,
-                      style: bold, bgColor: PdfColors.grey200),
-                ])
-              ]),
-              // Complaints
-              _hifzPdfCell("شکایات", 100,
-                  style: bold, bgColor: PdfColors.red300),
-            ];
-
-            List<pw.Widget> allRows = [
-              pw.Row(
-                  children: hdr,
-                  crossAxisAlignment: pw.CrossAxisAlignment.start)
-            ];
-
-            Map<int, pw.TableColumnWidth> colWidths = {};
-            int colIdx = 0;
-            colWidths[colIdx++] = const pw.FixedColumnWidth(100); // Complaints
-            // Manzil
-            colWidths[colIdx++] = const pw.FixedColumnWidth(50); // Listener
-            colWidths[colIdx++] = const pw.FixedColumnWidth(50); // Grade
-            colWidths[colIdx++] = const pw.FixedColumnWidth(50); // Qty
-            colWidths[colIdx++] = const pw.FixedColumnWidth(60); // Details
-            // Sabqi
-            colWidths[colIdx++] = const pw.FixedColumnWidth(50); // Listener
-            colWidths[colIdx++] = const pw.FixedColumnWidth(50); // Grade
-            colWidths[colIdx++] = const pw.FixedColumnWidth(50); // Qty
-            colWidths[colIdx++] = const pw.FixedColumnWidth(40); // Para
-            // Sabaq
-            colWidths[colIdx++] = const pw.FixedColumnWidth(50); // Grade
-            colWidths[colIdx++] = const pw.FixedColumnWidth(40); // Lines
-            colWidths[colIdx++] = const pw.FixedColumnWidth(40); // Para
-            
-            colWidths[colIdx++] = const pw.FixedColumnWidth(60); // Date
-            if (!isIndiv) colWidths[colIdx++] = const pw.FixedColumnWidth(90); // Student
-
-            List<pw.TableRow> tableRows = [];
-
-            for (var h in _hifzRecords) {
-              PdfColor sCol = _getPdfStatusColor(h['sabaq_grade']);
-              PdfColor sqCol = _getPdfStatusColor(h['sabqi_grade']);
-              PdfColor mCol = _getPdfStatusColor(h['manzil_grade']);
-
-              String dtStr = h['date']?.toString() ?? '';
-              String sid = h['student_id']?.toString() ?? '';
-              var comps = _complaints.where((c) => c['student_id'].toString() == sid && (c['date'] == dtStr || dtStr.contains(c['date'] ?? ''))).toList();
-              String dailyComp = '-';
-              if (comps.isNotEmpty) {
-                dailyComp = comps.map((c) {
-                    String raw = c['complaint'] ?? '';
-                    final match = RegExp(r'^\[.*?\]\s*(.*)$', dotAll: true).firstMatch(raw);
-                    return match != null ? match.group(1) : raw;
-                }).join('\n');
-              }
-
-              tableRows.add(pw.TableRow(
-                  children: [
-                    // Complaints
-                    _hifzPdfCell(cleanUrduString(dailyComp), 100),
-                    // Manzil
-                    _hifzPdfCell(h['manzil_listener']?.toString() ?? '-', 50),
-                    _hifzPdfCell(translateStatusClean(h['manzil_grade']), 50, textColor: mCol),
-                    _hifzPdfCell(translateQtyClean(h['manzil_total_qty']), 50),
-                    _hifzPdfCell(cleanUrduString(h['manzil_details']), 60),
-                    // Sabqi
-                    _hifzPdfCell(h['sabqi_listener']?.toString() ?? '-', 50),
-                    _hifzPdfCell(translateStatusClean(h['sabqi_grade']), 50, textColor: sqCol),
-                    _hifzPdfCell(translateQtyClean(h['sabqi_qty']), 50),
-                    _hifzPdfCell(cleanUrduString(h['sabqi_para']), 40),
-                    // Sabaq
-                    _hifzPdfCell(translateStatusClean(h['sabaq_grade']), 50, textColor: sCol),
-                    _hifzPdfCell(h['sabaq_lines'] ?? '-', 40),
-                    _hifzPdfCell(cleanUrduString(h['sabaq_para']), 40),
-                    // Date
-                    _hifzPdfCell(h['date'] ?? '-', 60),
-                    // Student
-                    if (!isIndiv)
-                      _hifzPdfCell(_getStudentName(h['student_id'].toString()), 90),
-                  ]));
-            }
-
-            allRows.add(pw.Table(
-              columnWidths: colWidths,
-              children: tableRows,
-            ));
-
-            return allRows;
-          }));
+            return pw.FullPage(
+              ignoreMargins: true,
+              child: pw.Image(pw.MemoryImage(imageBytes), fit: pw.BoxFit.fill),
+            );
+          },
+        ));
+      }
 
       await Printing.layoutPdf(
         onLayout: (format) async => pdf.save(),
         name: 'Hifz_Report.pdf',
       );
     } catch (e) {
+      debugPrint("Print Error: $e");
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text("Print Error: $e")));
+            .showSnackBar(SnackBar(content: Text("Print failed: $e")));
       }
+    } finally {
+      if (mounted) setState(() => isLoading = false);
     }
   }
 
-  pw.Widget _hifzPdfCell(String text, double w,
-      {pw.TextStyle? style, PdfColor? bgColor, PdfColor? textColor}) {
-    return pw.Container(
-      width: w,
-      padding: const pw.EdgeInsets.all(3),
-      decoration: pw.BoxDecoration(
-          color: bgColor,
-          border: pw.Border.all(color: PdfColors.grey600, width: 0.5)),
-      alignment: pw.Alignment.center,
-      child: pw.Center(
-        child: pw.Text(text,
-            textAlign: pw.TextAlign.center,
-            style: style?.copyWith(color: textColor) ??
-                pw.TextStyle(fontSize: 8, color: textColor)),
+  Widget _buildPdfPageWidget({
+    required List<Map<String, dynamic>> chunk,
+    required int pageNum,
+    required int totalPages,
+  }) {
+    const primary = Color(0xFF284D3D);
+    const gold = Color(0xFFD4AC0D);
+    const urduFont =
+        TextStyle(fontFamily: 'JameelNooriNastaleeq', color: Colors.black);
+    bool isIndiv = selectedStudentId != null;
+
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(fontFamily: 'JameelNooriNastaleeq'),
+      home: Directionality(
+        textDirection: TextDirection.rtl,
+        child: MediaQuery(
+          data: const MediaQueryData(size: Size(1122, 793)),
+          child: SizedBox(
+            width: 1122,
+            height: 793,
+            child: Material(
+              color: Colors.white,
+              child: Container(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                          color: primary, borderRadius: BorderRadius.circular(8)),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Image.asset('assets/logo.png',
+                              height: 45, width: 45,
+                              errorBuilder: (_, __, ___) => const Icon(
+                                  Icons.school, color: Colors.white, size: 45)),
+                          Column(
+                            children: [
+                              Text("مدرسہ اشرف المدارس — فاروقہ، سرگودھا",
+                                  style: urduFont.copyWith(
+                                      fontSize: 20, color: Colors.white, fontWeight: FontWeight.bold)),
+                              Text("حفظ تعلیمی رپورٹ",
+                                  style: urduFont.copyWith(fontSize: 14, color: gold)),
+                              Text("مدت: $fromDate تا $toDate",
+                                  style: urduFont.copyWith(fontSize: 12, color: Colors.white)),
+                            ],
+                          ),
+                          Text("صفحہ $pageNum / $totalPages",
+                              style: urduFont.copyWith(color: Colors.white, fontSize: 14)),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    if (isIndiv && pageNum == 1)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                            color: Colors.grey.shade200, borderRadius: BorderRadius.circular(8)),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text("طالب علم: ", style: urduFont.copyWith(fontSize: 16, fontWeight: FontWeight.bold)),
+                            Text(_getStudentName(selectedStudentId!), style: urduFont.copyWith(fontSize: 16)),
+                          ],
+                        ),
+                      ),
+                    const SizedBox(height: 12),
+                    Expanded(
+                      child: Container(
+                        decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade600, width: 1.5)),
+                        child: Column(
+                          children: [
+                            // Header
+                            IntrinsicHeight(
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  if (!isIndiv) _nativeHeaderBlock("طالب علم", 110, bgColor: Colors.grey.shade300),
+                                  _nativeHeaderBlock("تاریخ", 70, bgColor: Colors.grey.shade300),
+                                  _nativeHeaderSection("سبق (نیا)", [
+                                    _nativeSubCol("پارہ", 45),
+                                    _nativeSubCol("لائنیں", 45),
+                                    _nativeSubCol("کیفیت", 55),
+                                  ], bgColor: Colors.green.shade200),
+                                  _nativeHeaderSection("سبقی (پچھلا سبق)", [
+                                    _nativeSubCol("پارہ", 45),
+                                    _nativeSubCol("مقدار", 55),
+                                    _nativeSubCol("کیفیت", 60),
+                                    _nativeSubCol("سننے والا", 65),
+                                  ], bgColor: Colors.blue.shade200),
+                                  _nativeHeaderSection("منزل (پختہ)", [
+                                    _nativeSubCol("تفصیل", 75),
+                                    _nativeSubCol("مقدار", 60),
+                                    _nativeSubCol("کیفیت", 60),
+                                    _nativeSubCol("سننے والا", 65),
+                                  ], bgColor: Colors.orange.shade200),
+                                  Expanded(child: _nativeHeaderBlock("شکایات", 0, bgColor: Colors.red.shade200)),
+                                ],
+                              ),
+                            ),
+                            // Data rows
+                            ...chunk.map((h) {
+                              String dtStr = h['date']?.toString() ?? '';
+                              String sid = h['student_id']?.toString() ?? '';
+                              var comps = _complaints.where((c) =>
+                                      c['student_id'].toString() == sid &&
+                                      (c['date'] == dtStr || dtStr.contains(c['date'] ?? '')))
+                                  .toList();
+                              String dailyComp = '-';
+                              if (comps.isNotEmpty) {
+                                dailyComp = comps.map((c) {
+                                  String raw = c['complaint'] ?? '';
+                                  final match = RegExp(r'^\[.*?\]\s*(.*)$', dotAll: true).firstMatch(raw);
+                                  return match != null ? match.group(1) : raw;
+                                }).join('\n');
+                              }
+                              return IntrinsicHeight(
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  children: [
+                                    if (!isIndiv) _nativeCell(_getStudentName(sid), 110),
+                                    _nativeCell(dtStr, 70),
+                                    _nativeCell(cleanUrduString(h['sabaq_para']), 45),
+                                    _nativeCell(h['sabaq_lines']?.toString() ?? '-', 45),
+                                    _nativeCell(translateStatusClean(h['sabaq_grade']), 55, textColor: _getNativeStatusColor(h['sabaq_grade'])),
+                                    
+                                    _nativeCell(cleanUrduString(h['sabqi_para']), 45),
+                                    _nativeCell(translateQtyClean(h['sabqi_qty']), 55),
+                                    _nativeCell(translateStatusClean(h['sabqi_grade']), 60, textColor: _getNativeStatusColor(h['sabqi_grade'])),
+                                    _nativeCell(h['sabqi_listener']?.toString() ?? '-', 65),
+                                    
+                                    _nativeCell(cleanUrduString(h['manzil_details']), 75),
+                                    _nativeCell(translateQtyClean(h['manzil_total_qty']), 60),
+                                    _nativeCell(translateStatusClean(h['manzil_grade']), 60, textColor: _getNativeStatusColor(h['manzil_grade'])),
+                                    _nativeCell(h['manzil_listener']?.toString() ?? '-', 65),
+                                    
+                                    Expanded(child: _nativeCell(cleanUrduString(dailyComp), 0, alignLeft: false)),
+                                  ],
+                                ),
+                              );
+                            }),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
 
-  PdfColor _getPdfStatusColor(String? status) {
-    if (status == 'Excellent') return PdfColors.green800;
-    if (status == 'Good') return PdfColors.blue800;
-    if (status == 'Weak') return PdfColors.red800;
-    if (status == 'Average') return PdfColors.orange800;
-    return PdfColors.black;
+  Widget _nativeHeaderBlock(String text, double w, {Color? bgColor}) {
+    return Container(
+      width: w > 0 ? w : null,
+      decoration: BoxDecoration(
+        color: bgColor,
+        border: Border.all(color: Colors.grey.shade600, width: 0.5),
+      ),
+      alignment: Alignment.center,
+      padding: const EdgeInsets.all(4),
+      child: Text(text, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13), textAlign: TextAlign.center),
+    );
+  }
+
+  Widget _nativeHeaderSection(String title, List<Widget> children, {Color? bgColor}) {
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey.shade600, width: 0.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            color: bgColor,
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+                border: Border(bottom: BorderSide(color: Colors.grey.shade600, width: 0.5))),
+            child: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+          ),
+          Expanded(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: children,
+            ),
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget _nativeSubCol(String text, double w) {
+    return Container(
+      width: w,
+      color: Colors.grey.shade200,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        border: Border(left: BorderSide(color: Colors.grey.shade600, width: 0.5), right: BorderSide(color: Colors.grey.shade600, width: 0.5)),
+      ),
+      padding: const EdgeInsets.all(2),
+      child: Text(text, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11), textAlign: TextAlign.center),
+    );
+  }
+
+  Widget _nativeCell(String text, double w, {Color? textColor, bool alignLeft = false}) {
+    return Container(
+      width: w > 0 ? w : null,
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey.shade400, width: 0.5),
+      ),
+      alignment: alignLeft ? Alignment.centerLeft : Alignment.center,
+      padding: const EdgeInsets.all(4),
+      child: Text(text, style: TextStyle(fontSize: 11, color: textColor ?? Colors.black), textAlign: alignLeft ? TextAlign.left : TextAlign.center),
+    );
+  }
+
+  Color _getNativeStatusColor(String? status) {
+    if (status == 'Excellent') return Colors.green.shade800;
+    if (status == 'Good') return Colors.blue.shade800;
+    if (status == 'Weak') return Colors.red.shade800;
+    if (status == 'Average') return Colors.orange.shade800;
+    return Colors.black;
   }
 }

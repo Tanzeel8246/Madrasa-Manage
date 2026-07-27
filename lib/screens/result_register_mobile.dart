@@ -1189,8 +1189,8 @@ class _ResultRegisterMobilePageState extends State<ResultRegisterMobilePage> {
         });
       }
 
-      const int rowsPerPageFirst = 15;
-      const int rowsPerPageNormal = 22;
+      const int rowsPerPageFirst = 13;
+      const int rowsPerPageNormal = 16;
 
       List<List<Map<String, dynamic>>> chunks = [];
       int currentIndex = 0;
