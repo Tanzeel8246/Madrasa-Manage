@@ -1133,9 +1133,9 @@ class _ReportsHifzPageState extends State<ReportsHifzPage> {
 
         final imageBytes = await screenshotController.captureFromWidget(
           pageWidget,
-          delay: const Duration(milliseconds: 200),
+          delay: const Duration(milliseconds: 400),
           targetSize: const Size(1122, 793),
-          pixelRatio: 1.0,
+          pixelRatio: 2.0,
         );
 
         pdf.addPage(pw.Page(
@@ -1247,8 +1247,9 @@ class _ReportsHifzPageState extends State<ReportsHifzPage> {
                             child: Column(
                           children: [
                             // Header
-                            IntrinsicHeight(
-                              child: Row(
+                            SizedBox(
+                                height: 55,
+                                child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
                                   if (!isIndiv) _nativeHeaderBlock("طالب علم", 110, bgColor: Colors.grey.shade300),
@@ -1270,7 +1271,7 @@ class _ReportsHifzPageState extends State<ReportsHifzPage> {
                                     _nativeSubCol("کیفیت", 60),
                                     _nativeSubCol("سننے والا", 65),
                                   ], bgColor: Colors.orange.shade200),
-                                  Expanded(child: _nativeHeaderBlock("شکایات", 0, bgColor: Colors.red.shade200)),
+                                  _nativeHeaderBlock("شکایات", isIndiv ? 374 : 264, bgColor: Colors.red.shade200),
                                 ],
                               ),
                             ),
@@ -1310,7 +1311,7 @@ class _ReportsHifzPageState extends State<ReportsHifzPage> {
                                     _nativeCell(translateStatusClean(h['manzil_grade']), 60, textColor: _getNativeStatusColor(h['manzil_grade'])),
                                     _nativeCell(h['manzil_listener']?.toString() ?? '-', 65),
                                     
-                                    Expanded(child: _nativeCell(cleanUrduString(dailyComp), 0, alignLeft: false)),
+                                    _nativeCell(cleanUrduString(dailyComp), isIndiv ? 374 : 264, alignLeft: false),
                                   ],
                                 ),
                               );

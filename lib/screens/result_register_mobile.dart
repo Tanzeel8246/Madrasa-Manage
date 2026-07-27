@@ -1238,9 +1238,9 @@ class _ResultRegisterMobilePageState extends State<ResultRegisterMobilePage> {
 
         final imageBytes = await screenshotController.captureFromWidget(
           pageWidget,
-          delay: const Duration(milliseconds: 200),
+          delay: const Duration(milliseconds: 400),
           targetSize: const Size(1122, 793), // A4 Landscape size
-          pixelRatio: 1.0, // High-Resolution rendering for Print Quality
+          pixelRatio: 2.0, // High-Resolution rendering for Print Quality
         );
 
         pdf.addPage(pw.Page(
