@@ -1120,23 +1120,23 @@ class _ReportsHifzPageState extends State<ReportsHifzPage> {
               ]),
           build: (pw.Context context) {
             bool isIndiv = selectedStudentId != null;
-            // Header Row (Left-To-Right Order!)
+            // Header Row (RTL Order - fixes text breaking)
             List<pw.Widget> hdr = [
-              // Complaints
-              _hifzPdfCell("شکایات", 100,
-                  style: bold, bgColor: PdfColors.red300),
-              // Manzil
+              if (!isIndiv)
+                _hifzPdfCell("طالب علم", 90,
+                    style: bold, bgColor: PdfColors.grey300),
+              _hifzPdfCell("تاریخ", 60,
+                  style: bold, bgColor: PdfColors.grey300),
+              // Sabaq
               pw.Column(children: [
-                _hifzPdfCell("منزل (پختہ)", 210,
-                    style: bold, bgColor: PdfColors.orange300),
+                _hifzPdfCell("سبق (نیا)", 130,
+                    style: bold, bgColor: PdfColors.green300),
                 pw.Row(children: [
-                  _hifzPdfCell("سننے والا", 50,
+                  _hifzPdfCell("پارہ", 40,
+                      style: bold, bgColor: PdfColors.grey200),
+                  _hifzPdfCell("لائنیں", 40,
                       style: bold, bgColor: PdfColors.grey200),
                   _hifzPdfCell("کیفیت", 50,
-                      style: bold, bgColor: PdfColors.grey200),
-                  _hifzPdfCell("مقدار", 50,
-                      style: bold, bgColor: PdfColors.grey200),
-                  _hifzPdfCell("تفصیل", 60,
                       style: bold, bgColor: PdfColors.grey200),
                 ])
               ]),
@@ -1145,44 +1145,40 @@ class _ReportsHifzPageState extends State<ReportsHifzPage> {
                 _hifzPdfCell("سبقی (پچھلا سبق)", 190,
                     style: bold, bgColor: PdfColors.blue300),
                 pw.Row(children: [
-                  _hifzPdfCell("سننے والا", 50,
-                      style: bold, bgColor: PdfColors.grey200),
-                  _hifzPdfCell("کیفیت", 50,
+                  _hifzPdfCell("پارہ", 40,
                       style: bold, bgColor: PdfColors.grey200),
                   _hifzPdfCell("مقدار", 50,
                       style: bold, bgColor: PdfColors.grey200),
-                  _hifzPdfCell("پارہ", 40,
-                      style: bold, bgColor: PdfColors.grey200),
-                ])
-              ]),
-              // Sabaq
-              pw.Column(children: [
-                _hifzPdfCell("سبق (نیا)", 130,
-                    style: bold, bgColor: PdfColors.green300),
-                pw.Row(children: [
                   _hifzPdfCell("کیفیت", 50,
                       style: bold, bgColor: PdfColors.grey200),
-                  _hifzPdfCell("لائنیں", 40,
-                      style: bold, bgColor: PdfColors.grey200),
-                  _hifzPdfCell("پارہ", 40,
+                  _hifzPdfCell("سننے والا", 50,
                       style: bold, bgColor: PdfColors.grey200),
                 ])
               ]),
-              _hifzPdfCell("تاریخ", 60,
-                  style: bold, bgColor: PdfColors.grey300),
-              if (!isIndiv)
-                _hifzPdfCell("طالب علم", 90,
-                    style: bold, bgColor: PdfColors.grey300),
+              // Manzil
+              pw.Column(children: [
+                _hifzPdfCell("منزل (پختہ)", 210,
+                    style: bold, bgColor: PdfColors.orange300),
+                pw.Row(children: [
+                  _hifzPdfCell("تفصیل", 60,
+                      style: bold, bgColor: PdfColors.grey200),
+                  _hifzPdfCell("مقدار", 50,
+                      style: bold, bgColor: PdfColors.grey200),
+                  _hifzPdfCell("کیفیت", 50,
+                      style: bold, bgColor: PdfColors.grey200),
+                  _hifzPdfCell("سننے والا", 50,
+                      style: bold, bgColor: PdfColors.grey200),
+                ])
+              ]),
+              // Complaints
+              _hifzPdfCell("شکایات", 100,
+                  style: bold, bgColor: PdfColors.red300),
             ];
 
             List<pw.Widget> allRows = [
-              pw.Directionality(
-                textDirection: pw.TextDirection.ltr,
-                child: pw.Row(
+              pw.Row(
                   children: hdr,
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                ),
-              )
+                  crossAxisAlignment: pw.CrossAxisAlignment.start)
             ];
 
             Map<int, pw.TableColumnWidth> colWidths = {};
