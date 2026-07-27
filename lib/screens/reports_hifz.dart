@@ -1121,6 +1121,7 @@ class _ReportsHifzPageState extends State<ReportsHifzPage> {
 
       final pdf = pw.Document();
 
+      int currentGlobalIndex = 0;
       for (int i = 0; i < chunks.length; i++) {
         final chunk = chunks[i];
         final pageNum = i + 1;
@@ -1129,7 +1130,9 @@ class _ReportsHifzPageState extends State<ReportsHifzPage> {
           chunk: chunk,
           pageNum: pageNum,
           totalPages: chunks.length,
+          startIndex: currentGlobalIndex,
         );
+        currentGlobalIndex += chunk.length;
 
         final imageBytes = await screenshotController.captureFromWidget(
           pageWidget,
@@ -1169,6 +1172,7 @@ class _ReportsHifzPageState extends State<ReportsHifzPage> {
     required List<Map<String, dynamic>> chunk,
     required int pageNum,
     required int totalPages,
+    required int startIndex,
   }) {
     const primary = Color(0xFF284D3D);
     const gold = Color(0xFFD4AC0D);
@@ -1252,31 +1256,35 @@ class _ReportsHifzPageState extends State<ReportsHifzPage> {
                                 child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
+                                  _nativeHeaderBlock("نمبر شمار", 40, bgColor: Colors.grey.shade300),
                                   if (!isIndiv) _nativeHeaderBlock("طالب علم", 110, bgColor: Colors.grey.shade300),
                                   _nativeHeaderBlock("تاریخ", 70, bgColor: Colors.grey.shade300),
-                                  _nativeHeaderSection("سبق (نیا)", [
+                                  _nativeHeaderSection("سبق (نیا)", 145, [
                                     _nativeSubCol("پارہ", 45),
                                     _nativeSubCol("لائنیں", 45),
                                     _nativeSubCol("کیفیت", 55),
                                   ], bgColor: Colors.green.shade200),
-                                  _nativeHeaderSection("سبقی (پچھلا سبق)", [
+                                  _nativeHeaderSection("سبقی (پچھلا سبق)", 225, [
                                     _nativeSubCol("پارہ", 45),
                                     _nativeSubCol("مقدار", 55),
                                     _nativeSubCol("کیفیت", 60),
                                     _nativeSubCol("سننے والا", 65),
                                   ], bgColor: Colors.blue.shade200),
-                                  _nativeHeaderSection("منزل (پختہ)", [
+                                  _nativeHeaderSection("منزل (پختہ)", 260, [
                                     _nativeSubCol("تفصیل", 75),
                                     _nativeSubCol("مقدار", 60),
                                     _nativeSubCol("کیفیت", 60),
                                     _nativeSubCol("سننے والا", 65),
                                   ], bgColor: Colors.orange.shade200),
-                                  _nativeHeaderBlock("شکایات", isIndiv ? 374 : 264, bgColor: Colors.red.shade200),
+                                  _nativeHeaderBlock("شکایات", isIndiv ? 334 : 224, bgColor: Colors.red.shade200),
                                 ],
                               ),
                             ),
                             // Data rows
-                            ...chunk.map((h) {
+                            ...chunk.asMap().entries.map((entry) {
+                              int index = entry.key;
+                              var h = entry.value;
+                              int srNo = startIndex + index + 1;
                               String dtStr = h['date']?.toString() ?? '';
                               String sid = h['student_id']?.toString() ?? '';
                               var comps = _complaints.where((c) =>
@@ -1295,6 +1303,7 @@ class _ReportsHifzPageState extends State<ReportsHifzPage> {
                                 child: Row(
                                   crossAxisAlignment: CrossAxisAlignment.stretch,
                                   children: [
+                                    _nativeCell(srNo.toString(), 40),
                                     if (!isIndiv) _nativeCell(_getStudentName(sid), 110),
                                     _nativeCell(dtStr, 70),
                                     _nativeCell(cleanUrduString(h['sabaq_para']), 45),
@@ -1311,7 +1320,7 @@ class _ReportsHifzPageState extends State<ReportsHifzPage> {
                                     _nativeCell(translateStatusClean(h['manzil_grade']), 60, textColor: _getNativeStatusColor(h['manzil_grade'])),
                                     _nativeCell(h['manzil_listener']?.toString() ?? '-', 65),
                                     
-                                    _nativeCell(cleanUrduString(dailyComp), isIndiv ? 374 : 264, alignLeft: false),
+                                    _nativeCell(cleanUrduString(dailyComp), isIndiv ? 334 : 224, alignLeft: false),
                                   ],
                                 ),
                               );
@@ -1345,8 +1354,9 @@ class _ReportsHifzPageState extends State<ReportsHifzPage> {
     );
   }
 
-  Widget _nativeHeaderSection(String title, List<Widget> children, {Color? bgColor}) {
+  Widget _nativeHeaderSection(String title, double width, List<Widget> children, {Color? bgColor}) {
     return Container(
+      width: width,
       decoration: BoxDecoration(
         border: Border.all(color: Colors.grey.shade600, width: 0.5),
       ),
