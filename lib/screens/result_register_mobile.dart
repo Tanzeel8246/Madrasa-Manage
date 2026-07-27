@@ -1434,7 +1434,12 @@ class _ResultRegisterMobilePageState extends State<ResultRegisterMobilePage> {
 
                           // Table
                           Expanded(
-                              child: Table(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.topCenter,
+                              child: SizedBox(
+                                width: 1122 - 48,
+                                child: Table(
                                   border:
                                       TableBorder.all(color: primary, width: 1),
                                   columnWidths: const {
@@ -1530,8 +1535,11 @@ class _ResultRegisterMobilePageState extends State<ResultRegisterMobilePage> {
                                     ],
                                   );
                                  })
-                               ]))
-                         ])))))));
+                               ]),
+                              ),
+                            ),
+                          ),
+                        ])))))));
   }
 
   Widget _pdfSummaryItem(String label, String value, Color color) {

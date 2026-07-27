@@ -1208,9 +1208,14 @@ class _ReportsHifzPageState extends State<ReportsHifzPage> {
                       ),
                     const SizedBox(height: 12),
                     Expanded(
-                      child: Container(
-                        decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade600, width: 1.5)),
-                        child: Column(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.topCenter,
+                        child: SizedBox(
+                          width: 1122 - 48,
+                          child: Container(
+                            decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade600, width: 1.5)),
+                            child: Column(
                           children: [
                             // Header
                             IntrinsicHeight(
@@ -1282,6 +1287,8 @@ class _ReportsHifzPageState extends State<ReportsHifzPage> {
                               );
                             }),
                           ],
+                        ),
+                      ),
                         ),
                       ),
                     ),
