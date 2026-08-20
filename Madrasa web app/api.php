@@ -899,11 +899,15 @@ try {
             }
         }
         if ($user['role'] === 'admin' || $user['role'] === 'nazim' || in_array('manage_finance', $user['permissions'], true)) {
-            if ($user['role'] === 'admin') {
-                $data['finance_history'] = $fetch("SELECT * FROM finance ORDER BY date DESC, id DESC LIMIT 5000");
+            if ($user['role'] === 'admin' || $user['role'] === 'nazim') {
+                // Madrasa finance (system_type = 'Madrasa' OR NULL)
+                $data['finance_history'] = $fetch("SELECT * FROM finance WHERE (system_type = 'Madrasa' OR system_type IS NULL) AND (is_deleted = 0 OR is_deleted IS NULL) ORDER BY date DESC, id DESC LIMIT 5000");
+                // Masjid finance (system_type = 'Masjid')
+                $data['masjid_finance_history'] = $fetch("SELECT * FROM finance WHERE system_type = 'Masjid' AND (is_deleted = 0 OR is_deleted IS NULL) ORDER BY date DESC, id DESC LIMIT 5000");
             } else {
                 $uid = intval($user['id'] ?? 0);
-                $data['finance_history'] = $fetch("SELECT * FROM finance WHERE user_id = $uid AND (is_deleted = 0 OR is_deleted IS NULL) ORDER BY date DESC, id DESC LIMIT 5000");
+                $data['finance_history'] = $fetch("SELECT * FROM finance WHERE user_id = $uid AND (system_type = 'Madrasa' OR system_type IS NULL) AND (is_deleted = 0 OR is_deleted IS NULL) ORDER BY date DESC, id DESC LIMIT 5000");
+                $data['masjid_finance_history'] = $fetch("SELECT * FROM finance WHERE user_id = $uid AND system_type = 'Masjid' AND (is_deleted = 0 OR is_deleted IS NULL) ORDER BY date DESC, id DESC LIMIT 5000");
             }
             sync_all_heads_with_chart_and_departments($pdo);
             $data['heads'] = $fetch("SELECT * FROM heads WHERE is_deleted = 0 OR is_deleted IS NULL ORDER BY type ASC, name ASC LIMIT 1000");
@@ -1135,7 +1139,7 @@ try {
         } else {
             write_log("Sync Up: Keys present: " . implode(', ', array_keys($input)));
         }
-        $syncedIds = ['finance_entries' => [], 'heads' => [], 'hifz_entries' => [], 'nazira_record' => [], 'students' => [], 'teachers' => [], 'attendance_entries' => [], 'attendance_teachers' => [], 'teacher_period_attendance' => [], 'complaints' => [], 'parent_complaints' => [], 'notices' => [], 'exams' => [], 'leave_applications' => [], 'fee_submissions' => [], 'academic_reports' => [], 'qaida_records' => [], 'exam_results' => [], 'classes' => [], 'departments' => [], 'acc_chart_of_accounts' => [], 'acc_vouchers' => [], 'acc_ledger_entries' => [], 'acc_payroll' => [], 'acc_invoices' => []];
+        $syncedIds = ['finance_entries' => [], 'masjid_finance_entries' => [], 'heads' => [], 'hifz_entries' => [], 'nazira_record' => [], 'students' => [], 'teachers' => [], 'attendance_entries' => [], 'attendance_teachers' => [], 'teacher_period_attendance' => [], 'complaints' => [], 'parent_complaints' => [], 'notices' => [], 'exams' => [], 'leave_applications' => [], 'fee_submissions' => [], 'academic_reports' => [], 'qaida_records' => [], 'exam_results' => [], 'classes' => [], 'departments' => [], 'acc_chart_of_accounts' => [], 'acc_vouchers' => [], 'acc_ledger_entries' => [], 'acc_payroll' => [], 'acc_invoices' => []];
         $serverIds = ['finance_entries' => [], 'teachers' => [], 'notices' => []];
         $syncErrors = [];
 
@@ -1600,6 +1604,68 @@ try {
                     }
                 } catch (Exception $e) {
                     write_log("SQL Error in Sync (Finance): " . $e->getMessage());
+                    $syncErrors[] = $e->getMessage();
+                }
+            }
+        }
+        // Masjid Finance Entries
+        if (!empty($input['masjid_finance_entries']) && is_array($input['masjid_finance_entries'])) {
+            foreach ($input['masjid_finance_entries'] as $f) {
+                $localId = to_int_or_null($f['id'] ?? null);
+                $serverId = to_int_or_null($f['server_id'] ?? null);
+                try {
+                    if ((int)($f['is_deleted'] ?? 0) === 1) {
+                        $deletedServerId = $serverId;
+                        if ($serverId) {
+                            $pdo->prepare("UPDATE finance SET is_deleted = 1 WHERE id = ? AND system_type = 'Masjid'")->execute([$serverId]);
+                        } else {
+                            $findDeleted = $pdo->prepare("SELECT id FROM finance WHERE date = ? AND type = ? AND amount = ? AND description = ? AND system_type = 'Masjid' LIMIT 1");
+                            $findDeleted->execute([normalize_date($f['date'] ?? ''), trim($f['type'] ?? ''), (float)($f['amount'] ?? 0), $f['description'] ?? '']);
+                            $deletedServerId = to_int_or_null($findDeleted->fetchColumn());
+                            if ($deletedServerId) {
+                                $pdo->prepare("UPDATE finance SET is_deleted = 1 WHERE id = ?")->execute([$deletedServerId]);
+                            }
+                        }
+                        if ($localId !== null) {
+                            $syncedIds['masjid_finance_entries'][] = $localId;
+                            if ($deletedServerId) $serverIds['finance_entries'][(string)$localId] = (int)$deletedServerId;
+                        }
+                        continue;
+                    }
+                    $date = normalize_date($f['date'] ?? '');
+                    $type = trim($f['type'] ?? '');
+                    $amount = (float)($f['amount'] ?? 0);
+                    $desc = $f['description'] ?? '';
+                    $uid = to_int_or_null($f['user_id'] ?? null) ?: 1;
+                    $headId = to_int_or_null($f['head_id'] ?? null);
+                    if (!$headId) {
+                        $headId = ensure_head_id($pdo, strtolower($type) === 'expense' ? 'expense' : 'income');
+                    }
+                    $computer_receipt_no = to_int_or_null($f['computer_receipt_no'] ?? null);
+                    $userName = trim($f['user_name'] ?? 'Admin');
+                    $savedId = null;
+                    if ($serverId) {
+                        $check = $pdo->prepare("SELECT id FROM finance WHERE id = ? AND system_type = 'Masjid' LIMIT 1");
+                        $check->execute([$serverId]);
+                        $existingId = $check->fetchColumn();
+                    } else {
+                        $existingId = null;
+                    }
+                    if ($existingId) {
+                        $savedId = (int)$existingId;
+                        $pdo->prepare("UPDATE finance SET date = ?, type = ?, amount = ?, description = ?, head_id = ?, manual_receipt_no = ?, donor_name = ?, donor_address = ?, computer_receipt_no = ?, user_id = ?, user_name = ?, system_type = 'Masjid', is_deleted = 0 WHERE id = ?")
+                            ->execute([$date, $type, $amount, $desc, $headId, $f['manual_receipt_no'] ?? '', $f['donor_name'] ?? '', $f['donor_address'] ?? '', $computer_receipt_no, $uid, $userName, $existingId]);
+                    } else {
+                        $pdo->prepare("INSERT INTO finance (date, type, amount, description, head_id, manual_receipt_no, donor_name, donor_address, computer_receipt_no, user_id, user_name, system_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Masjid')")
+                            ->execute([$date, $type, $amount, $desc, $headId, $f['manual_receipt_no'] ?? '', $f['donor_name'] ?? '', $f['donor_address'] ?? '', $computer_receipt_no, $uid, $userName]);
+                        $savedId = (int)$pdo->lastInsertId();
+                    }
+                    if ($localId !== null) {
+                        $syncedIds['masjid_finance_entries'][] = $localId;
+                        if ($savedId) $serverIds['finance_entries'][(string)$localId] = (int)$savedId;
+                    }
+                } catch (Exception $e) {
+                    write_log("SQL Error in Sync (Masjid Finance): " . $e->getMessage());
                     $syncErrors[] = $e->getMessage();
                 }
             }

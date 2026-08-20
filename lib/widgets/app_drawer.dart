@@ -41,6 +41,8 @@ import '../screens/teacher_attendance_report.dart';
 import '../screens/teachers.dart';
 import '../utils/globals.dart';
 import '../utils/session.dart';
+import '../utils/system_type_global.dart';
+import '../screens/masjid_dashboard.dart';
 
 class AppDrawer extends StatefulWidget {
   const AppDrawer({super.key});
@@ -113,6 +115,66 @@ class _AppDrawerState extends State<AppDrawer> {
                   isUrdu ? 'ڈیش بورڈ' : 'Dashboard',
                   Icons.dashboard,
                   const DashboardPage(),
+                ),
+                // مسجد / مدرسہ سوئچر
+                ValueListenableBuilder<String>(
+                  valueListenable: SystemTypeGlobal.currentSystemType,
+                  builder: (context, sysType, _) {
+                    final isMasjid = sysType == 'Masjid';
+                    return Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: isMasjid
+                            ? const Color(0xFF1A4A5A).withValues(alpha: 0.12)
+                            : primaryGreen.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: isMasjid
+                              ? const Color(0xFF1A4A5A)
+                              : primaryGreen,
+                          width: 1.5,
+                        ),
+                      ),
+                      child: ListTile(
+                        dense: true,
+                        leading: Icon(
+                          isMasjid ? Icons.account_balance : Icons.mosque,
+                          color: isMasjid ? const Color(0xFF1A4A5A) : primaryGreen,
+                        ),
+                        title: Text(
+                          isMasjid
+                              ? (isUrdu ? 'مسجد موڈ — مدرسہ پر جائیں' : 'Masjid Mode — Switch to Madrasa')
+                              : (isUrdu ? 'مدرسہ موڈ — مسجد پر جائیں' : 'Madrasa Mode — Switch to Masjid'),
+                          style: TextStyle(
+                            color: isMasjid ? const Color(0xFF1A4A5A) : primaryGreen,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                        ),
+                        trailing: Icon(
+                          Icons.swap_horiz,
+                          color: isMasjid ? const Color(0xFF1A4A5A) : primaryGreen,
+                          size: 20,
+                        ),
+                        onTap: () {
+                          final newType = isMasjid ? 'Madrasa' : 'Masjid';
+                          SystemTypeGlobal.currentSystemType.value = newType;
+                          Navigator.pop(context);
+                          if (newType == 'Masjid') {
+                            Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(builder: (_) => const MasjidDashboard()),
+                            );
+                          } else {
+                            Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(builder: (_) => const DashboardPage()),
+                            );
+                          }
+                        },
+                      ),
+                    );
+                  },
                 ),
                 if (['admin', 'nazim', 'teacher']
                     .contains(currentUserRole.value)) ...[
@@ -304,6 +366,22 @@ class _AppDrawerState extends State<AppDrawer> {
                     Icons.vpn_key,
                     const ChangePasswordPage(),
                   ),
+                const Divider(),
+                ListTile(
+                  leading: Icon(Icons.g_translate, color: primaryGreen),
+                  title: Text(
+                    isUrdu ? 'English میں تبدیل کریں' : 'Switch to اردو',
+                    style: TextStyle(
+                      color: textDark,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  onTap: () {
+                    isUrduGlobal.value = !isUrduGlobal.value;
+                    Navigator.pop(context);
+                  },
+                ),
+                const Divider(),
                 ListTile(
                   leading: const Icon(Icons.logout, color: Colors.red),
                   title: Text(
@@ -325,21 +403,6 @@ class _AppDrawerState extends State<AppDrawer> {
                         MaterialPageRoute(builder: (c) => const HomePage()),
                       );
                     }
-                  },
-                ),
-                const Divider(),
-                ListTile(
-                  leading: Icon(Icons.g_translate, color: primaryGreen),
-                  title: Text(
-                    isUrdu ? 'English میں تبدیل کریں' : 'Switch to اردو',
-                    style: TextStyle(
-                      color: textDark,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  onTap: () {
-                    isUrduGlobal.value = !isUrduGlobal.value;
-                    Navigator.pop(context);
                   },
                 ),
                 const SizedBox(height: 20),

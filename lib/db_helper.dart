@@ -5,6 +5,7 @@ import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 
 import 'utils/globals.dart';
+import 'utils/system_type_global.dart';
 
 class DBHelper {
   static Database? _database;
@@ -19,7 +20,7 @@ class DBHelper {
     String path = join(await getDatabasesPath(), 'madrasa.db');
     return await openDatabase(
       path,
-      version: 35,
+      version: 36,
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
           try {
@@ -560,6 +561,54 @@ class DBHelper {
           try {
             await db.execute(
                 "ALTER TABLE acc_chart_of_accounts ADD COLUMN parent_id INTEGER");
+          } catch (_) {}
+        }
+        if (oldVersion < 36) {
+          // مسجد فنانس کی الگ ٹیبل بنائیں
+          try {
+            await db.execute('''
+              CREATE TABLE IF NOT EXISTS masjid_finance(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                server_id INTEGER,
+                date TEXT,
+                type TEXT,
+                amount REAL,
+                description TEXT,
+                head_id INTEGER,
+                head_name TEXT,
+                manual_receipt_no TEXT,
+                computer_receipt_no INTEGER,
+                donor_name TEXT,
+                donor_address TEXT,
+                spender_name TEXT,
+                signature_image TEXT,
+                receipt_no TEXT,
+                user_id INTEGER DEFAULT 1,
+                user_name TEXT,
+                system_type TEXT DEFAULT 'Masjid',
+                is_deleted INTEGER DEFAULT 0,
+                is_synced INTEGER DEFAULT 0
+              )
+            ''');
+          } catch (_) {}
+          // finance ٹیبل میں system_type کالم شامل کریں
+          try {
+            await db.execute("ALTER TABLE finance ADD COLUMN system_type TEXT DEFAULT 'Madrasa'");
+            await db.execute("UPDATE finance SET system_type = 'Madrasa' WHERE system_type IS NULL");
+          } catch (_) {}
+          // مسجد فنانس ہیڈز کی ٹیبل
+          try {
+            await db.execute('''
+              CREATE TABLE IF NOT EXISTS masjid_acc_chart_of_accounts(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                code TEXT,
+                name TEXT,
+                type TEXT,
+                system_type TEXT DEFAULT 'Masjid',
+                is_deleted INTEGER DEFAULT 0,
+                is_synced INTEGER DEFAULT 0
+              )
+            ''');
           } catch (_) {}
         }
       },
@@ -1428,11 +1477,14 @@ class DBHelper {
     Database db = await database;
     final role = (userRole ?? currentUserRole.value)?.toLowerCase() ?? '';
     final targetUserId = userId ?? currentUserId.value;
+    // صرف Madrasa کا ڈیٹا دکھائیں (Masjid کا ڈیٹا الگ masjid_finance ٹیبل میں ہے)
+    const sysType = 'Madrasa';
 
     if (role == 'admin') {
       return await db.query(
         'finance',
-        where: '(is_deleted = 0 OR is_deleted IS NULL)',
+        where: '(is_deleted = 0 OR is_deleted IS NULL) AND (system_type = ? OR system_type IS NULL)',
+        whereArgs: [sysType],
         orderBy: 'user_id ASC, date DESC, id DESC',
       );
     }
@@ -1440,6 +1492,57 @@ class DBHelper {
     if (targetUserId != null) {
       return await db.query(
         'finance',
+        where: 'user_id = ? AND (is_deleted = 0 OR is_deleted IS NULL) AND (system_type = ? OR system_type IS NULL)',
+        whereArgs: [targetUserId, sysType],
+        orderBy: 'date DESC, id DESC',
+      );
+    }
+
+    return await db.query(
+      'finance',
+      where: '(is_deleted = 0 OR is_deleted IS NULL) AND (system_type = ? OR system_type IS NULL)',
+      whereArgs: [sysType],
+      orderBy: 'date DESC, id DESC',
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // مسجد فنانس CRUD فنکشنز (الگ masjid_finance ٹیبل)
+  // ═══════════════════════════════════════════════════════
+
+  Future<List<Map<String, dynamic>>> getMasjidFinance({int? userId, String? userRole}) async {
+    Database db = await database;
+    final role = (userRole ?? currentUserRole.value)?.toLowerCase() ?? '';
+    final targetUserId = userId ?? currentUserId.value;
+
+    try {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS masjid_finance(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          server_id INTEGER,
+          date TEXT, type TEXT, amount REAL, description TEXT,
+          head_id INTEGER, head_name TEXT,
+          manual_receipt_no TEXT, computer_receipt_no INTEGER,
+          donor_name TEXT, donor_address TEXT,
+          spender_name TEXT, signature_image TEXT, receipt_no TEXT,
+          user_id INTEGER DEFAULT 1, user_name TEXT,
+          system_type TEXT DEFAULT 'Masjid',
+          is_deleted INTEGER DEFAULT 0, is_synced INTEGER DEFAULT 0
+        )
+      ''');
+    } catch (_) {}
+
+    if (role == 'admin') {
+      return await db.query(
+        'masjid_finance',
+        where: '(is_deleted = 0 OR is_deleted IS NULL)',
+        orderBy: 'user_id ASC, date DESC, id DESC',
+      );
+    }
+
+    if (targetUserId != null) {
+      return await db.query(
+        'masjid_finance',
         where: 'user_id = ? AND (is_deleted = 0 OR is_deleted IS NULL)',
         whereArgs: [targetUserId],
         orderBy: 'date DESC, id DESC',
@@ -1447,10 +1550,79 @@ class DBHelper {
     }
 
     return await db.query(
-      'finance',
+      'masjid_finance',
       where: '(is_deleted = 0 OR is_deleted IS NULL)',
       orderBy: 'date DESC, id DESC',
     );
+  }
+
+  Future<Map<int, Map<String, dynamic>>> getMasjidFinanceGroupedByUser() async {
+    final records = await getMasjidFinance(userRole: 'admin');
+    final Map<int, Map<String, dynamic>> grouped = {};
+    for (var r in records) {
+      final uid = (r['user_id'] as int?) ?? 0;
+      final uname = (r['user_name'] as String?) ?? 'نامعلوم';
+      if (!grouped.containsKey(uid)) {
+        grouped[uid] = {
+          'name': uname,
+          'income': <Map<String, dynamic>>[],
+          'expense': <Map<String, dynamic>>[]
+        };
+      }
+      final type = (r['type'] as String? ?? '').toLowerCase();
+      if (type == 'income') {
+        (grouped[uid]!['income'] as List).add(r);
+      } else {
+        (grouped[uid]!['expense'] as List).add(r);
+      }
+    }
+    return grouped;
+  }
+
+  Future<int> insertMasjidFinance(Map<String, dynamic> row) async {
+    Database db = await database;
+    final data = Map<String, dynamic>.from(row);
+    data['is_synced'] = 0;
+    data['is_deleted'] = data['is_deleted'] ?? 0;
+    data['system_type'] = 'Masjid';
+    try {
+      return await db.insert('masjid_finance', data,
+          conflictAlgorithm: ConflictAlgorithm.replace);
+    } catch (_) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS masjid_finance(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          server_id INTEGER,
+          date TEXT, type TEXT, amount REAL, description TEXT,
+          head_id INTEGER, head_name TEXT,
+          manual_receipt_no TEXT, computer_receipt_no INTEGER,
+          donor_name TEXT, donor_address TEXT,
+          spender_name TEXT, signature_image TEXT, receipt_no TEXT,
+          user_id INTEGER DEFAULT 1, user_name TEXT,
+          system_type TEXT DEFAULT 'Masjid',
+          is_deleted INTEGER DEFAULT 0, is_synced INTEGER DEFAULT 0
+        )
+      ''');
+      return await db.insert('masjid_finance', data,
+          conflictAlgorithm: ConflictAlgorithm.replace);
+    }
+  }
+
+  Future<int> updateMasjidFinance(int id, Map<String, dynamic> row) async {
+    Database db = await database;
+    final data = Map<String, dynamic>.from(row);
+    data['is_synced'] = 0;
+    data['is_deleted'] = data['is_deleted'] ?? 0;
+    data['system_type'] = 'Masjid';
+    return await db.update('masjid_finance', data,
+        where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<int> deleteMasjidFinance(int id) async {
+    Database db = await database;
+    return await db.update(
+        'masjid_finance', {'is_deleted': 1, 'is_synced': 0},
+        where: 'id = ?', whereArgs: [id]);
   }
 
   /// ÃƒÆ’Ã‹Å“Ãƒâ€šÃ‚Â§ÃƒÆ’Ã¢â‚¬ÂºÃƒâ€¦Ã¢â‚¬â„¢ÃƒÆ’Ã…Â¡Ãƒâ€¹Ã¢â‚¬Â ÃƒÆ’Ã¢â€žÂ¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â€žÂ¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â  ÃƒÆ’Ã…Â¡Ãƒâ€šÃ‚Â©ÃƒÆ’Ã¢â‚¬ÂºÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ ÃƒÆ’Ã¢â€žÂ¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾ÃƒÆ’Ã¢â‚¬ÂºÃƒâ€¦Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬ÂºÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢: ÃƒÆ’Ã¢â‚¬ÂºÃƒâ€¦Ã¢â‚¬â„¢ÃƒÆ’Ã¢â€žÂ¢Ãƒâ€¹Ã¢â‚¬Â ÃƒÆ’Ã‹Å“Ãƒâ€šÃ‚Â²ÃƒÆ’Ã‹Å“Ãƒâ€šÃ‚Â± ÃƒÆ’Ã¢â€žÂ¢Ãƒâ€¹Ã¢â‚¬Â ÃƒÆ’Ã‹Å“Ãƒâ€šÃ‚Â§ÃƒÆ’Ã‹Å“Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã‹Å“Ãƒâ€šÃ‚Â² ÃƒÆ’Ã…Â¡Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã‹Å“Ãƒâ€šÃ‚Â±ÃƒÆ’Ã¢â€žÂ¢Ãƒâ€¹Ã¢â‚¬Â ÃƒÆ’Ã¢â€žÂ¢Ãƒâ€šÃ‚Â¾ ÃƒÆ’Ã…Â¡Ãƒâ€šÃ‚Â©ÃƒÆ’Ã¢â‚¬ÂºÃƒâ€¦Ã¢â‚¬â„¢ÃƒÆ’Ã‹Å“Ãƒâ€šÃ‚Â§ ÃƒÆ’Ã¢â‚¬ÂºÃƒâ€šÃ‚ÂÃƒÆ’Ã¢â€žÂ¢Ãƒâ€¹Ã¢â‚¬Â ÃƒÆ’Ã‹Å“Ãƒâ€šÃ‚Â§ ÃƒÆ’Ã…Â¡Ãƒâ€¹Ã¢â‚¬Â ÃƒÆ’Ã¢â‚¬ÂºÃƒâ€¦Ã¢â‚¬â„¢ÃƒÆ’Ã¢â€žÂ¢Ãƒâ€šÃ‚Â¹ÃƒÆ’Ã‹Å“Ãƒâ€šÃ‚Â§
@@ -1483,7 +1655,9 @@ class DBHelper {
     final data = Map<String, dynamic>.from(row);
     data['is_synced'] = 0;
     data['is_deleted'] = data['is_deleted'] ?? 0;
-    final id = await db.insert('finance', data);
+    data['system_type'] = data['system_type'] ?? 'Madrasa'; // مدرسہ فنانس کے لیے ہمیشہ Madrasa
+    final id = await db.insert('finance', data,
+        conflictAlgorithm: ConflictAlgorithm.replace);
     await _postSimpleFinanceToAccounts(db, id);
     return id;
   }
@@ -2866,6 +3040,7 @@ class DBHelper {
                 'user_id':
                     int.tryParse(item['user_id']?.toString() ?? '1') ?? 1,
                 'user_name': item['user_name']?.toString() ?? 'Admin',
+                'system_type': item['system_type']?.toString() ?? 'Madrasa',
                 'is_deleted':
                     int.tryParse(item['is_deleted']?.toString() ?? '0') ?? 0,
                 'is_synced': 1,
@@ -2874,6 +3049,44 @@ class DBHelper {
         }
       } catch (e) {
         debugPrint("Sync Error (finance): $e");
+      }
+    }
+
+    // مسجد فنانس sync
+    if (data['masjid_finance_history'] != null) {
+      try {
+        batch.delete('masjid_finance', where: 'is_synced = ?', whereArgs: [1]);
+        for (var item in data['masjid_finance_history']) {
+          batch.insert(
+              'masjid_finance',
+              {
+                'id': int.tryParse(item['id']?.toString() ?? ''),
+                'server_id': int.tryParse(item['id']?.toString() ?? ''),
+                'date': item['date']?.toString() ?? '',
+                'type': item['type']?.toString() ?? '',
+                'amount': (item['amount'] != null)
+                    ? double.tryParse(item['amount'].toString()) ?? 0.0
+                    : 0.0,
+                'description': item['description']?.toString() ?? '',
+                'head_id': item['head_id'],
+                'head_name': item['head_name']?.toString() ?? '',
+                'manual_receipt_no':
+                    item['manual_receipt_no']?.toString() ?? '',
+                'donor_name': item['donor_name']?.toString() ?? '',
+                'donor_address': item['donor_address']?.toString() ?? '',
+                'computer_receipt_no': item['computer_receipt_no'],
+                'user_id':
+                    int.tryParse(item['user_id']?.toString() ?? '1') ?? 1,
+                'user_name': item['user_name']?.toString() ?? 'Admin',
+                'system_type': 'Masjid',
+                'is_deleted':
+                    int.tryParse(item['is_deleted']?.toString() ?? '0') ?? 0,
+                'is_synced': 1,
+              },
+              conflictAlgorithm: ConflictAlgorithm.replace);
+        }
+      } catch (e) {
+        debugPrint("Sync Error (masjid_finance): $e");
       }
     }
 

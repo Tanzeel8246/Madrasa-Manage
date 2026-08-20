@@ -19,6 +19,7 @@ class SyncService {
     'attendance_teachers',
     'teacher_period_attendance',
     'finance',
+    'masjid_finance',
     'heads',
     'exams',
     'exam_results',
@@ -39,6 +40,7 @@ class SyncService {
 
   static const Map<String, String> _apiKeyMap = {
     'finance': 'finance_entries',
+    'masjid_finance': 'masjid_finance_entries',
     'heads': 'heads',
     'hifz_record': 'hifz_entries',
     'nazira_record': 'nazira_record',
@@ -63,6 +65,7 @@ class SyncService {
     'students': 'manage_students',
     'teachers': 'manage_teachers',
     'finance': 'manage_finance',
+    'masjid_finance': 'manage_finance',
     'heads': 'manage_finance',
     'fee_submissions': 'manage_finance',
     'hifz_record': 'manage_hifz',
