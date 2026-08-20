@@ -3953,4 +3953,326 @@ class DBHelper {
     return await db
         .update('complaints', data, where: 'id = ?', whereArgs: [id]);
   }
+
+
+ // --- Maktab Helper Methods ---
+
+ Future<List<Map<String, dynamic>>> getMaktabStudents() async {
+   Database db = await database;
+   try {
+     return await db.query('maktab_students',
+         where:
+             "(status IS NULL OR LOWER(TRIM(status)) IN ('active', '', 'present', '????')) AND (is_deleted = 0 OR is_deleted IS NULL)'",
+         orderBy: 'name ASC');
+   } catch (e) {
+     return await db.query('maktab_students', orderBy: 'name ASC');
+   }
+ }
+
+ Future<int> insertMaktabStudent(Map<String, dynamic> row) async {
+   Database db = await database;
+   return await db.insert('maktab_students', row);
+ }
+
+ Future<int> updateMaktabStudent(int id, Map<String, dynamic> row) async {
+   Database db = await database;
+   return await db
+       .update('maktab_students', row, where: 'id = ?', whereArgs: [id]);
+ }
+
+ Future<int> deleteMaktabStudent(int id) async {
+   Database db = await database;
+   return await db.update('maktab_students', {'is_deleted': 1, 'is_synced': 0},
+       where: 'id = ?', whereArgs: [id]);
+ }
+
+ Future<List<Map<String, dynamic>>> getMaktabTeachers() async {
+   Database db = await database;
+   try {
+     return await db.query('maktab_teachers',
+         where:
+             "(status IS NULL OR LOWER(TRIM(status)) IN ('active', '', 'present', '????')) AND (is_deleted = 0 OR is_deleted IS NULL)'",
+         orderBy: 'name ASC');
+   } catch (e) {
+     return await db.query('maktab_teachers', orderBy: 'name ASC');
+   }
+ }
+
+ Future<int> insertMaktabTeacher(Map<String, dynamic> row) async {
+   Database db = await database;
+   return await db.insert('maktab_teachers', row);
+ }
+
+ Future<int> updateMaktabTeacher(int id, Map<String, dynamic> row) async {
+   Database db = await database;
+   return await db
+       .update('maktab_teachers', row, where: 'id = ?', whereArgs: [id]);
+ }
+
+ Future<int> deleteMaktabTeacher(int id) async {
+   Database db = await database;
+   return await db.update('maktab_teachers', {'is_deleted': 1, 'is_synced': 0},
+       where: 'id = ?', whereArgs: [id]);
+ }
+
+ Future<List<Map<String, dynamic>>> getMaktabClasses() async {
+   Database db = await database;
+   return await db.query('maktab_classes',
+       where:
+           '(is_deleted = 0 OR is_deleted IS NULL)',
+       orderBy: 'name ASC');
+ }
+
+ Future<List<Map<String, dynamic>>> getMaktabClassesForUser() async {
+   return getMaktabClasses();
+ }
+
+ Future<int> insertMaktabClass(Map<String, dynamic> row) async {
+   Database db = await database;
+   return await db.insert('maktab_classes', row);
+ }
+
+ Future<int> updateMaktabClass(int id, Map<String, dynamic> row) async {
+   Database db = await database;
+   return await db
+       .update('maktab_classes', row, where: 'id = ?', whereArgs: [id]);
+ }
+
+ Future<int> deleteMaktabClass(int id) async {
+   Database db = await database;
+   return await db.update('maktab_classes', {'is_deleted': 1, 'is_synced': 0},
+       where: 'id = ?', whereArgs: [id]);
+ }
+
+ Future<List<Map<String, dynamic>>> getMaktabAttendance() async {
+   Database db = await database;
+   return await db.query('maktab_attendance',
+       where:
+           '(is_deleted = 0 OR is_deleted IS NULL) AND system_type = \'${SystemTypeGlobal.currentSystemType.value}\'');
+ }
+
+ Future<List<Map<String, dynamic>>> getMaktabAttendanceByDate(
+     String date) async {
+   Database db = await database;
+   return await db.query('maktab_attendance',
+       where:
+           'date = ? AND (is_deleted = 0 OR is_deleted IS NULL)',
+       whereArgs: [date]);
+ }
+
+ Future<int> insertMaktabAttendance(Map<String, dynamic> row) async {
+   Database db = await database;
+   return await db.insert('maktab_attendance', row);
+ }
+
+ Future<int> updateMaktabAttendance(int id, Map<String, dynamic> row) async {
+   Database db = await database;
+   return await db
+       .update('maktab_attendance', row, where: 'id = ?', whereArgs: [id]);
+ }
+
+ Future<int> deleteMaktabAttendance(int id) async {
+   Database db = await database;
+   return await db.update(
+       'maktab_attendance', {'is_deleted': 1, 'is_synced': 0},
+       where: 'id = ?', whereArgs: [id]);
+ }
+
+ Future<void> saveMaktabAttendance(int studentId, String date, String status,
+     int delay, int userId, String userName) async {
+   Database db = await database;
+   final existing = await db.query('maktab_attendance',
+       where: 'student_id = ? AND date = ?', whereArgs: [studentId, date]);
+   if (existing.isNotEmpty) {
+     await db.update(
+         'maktab_attendance',
+         {
+           'status': status,
+           'delay_minutes': delay,
+           'user_id': userId,
+           'user_name': userName,
+           'is_synced': 0,
+           'is_deleted': 0
+         },
+         where: 'id = ?',
+         whereArgs: [existing.first['id']]);
+   } else {
+     await db.insert('maktab_attendance', {
+       'student_id': studentId,
+       'date': date,
+       'status': status,
+       'delay_minutes': delay,
+       'user_id': userId,
+       'user_name': userName,
+       'is_synced': 0,
+       'is_deleted': 0
+     });
+   }
+ }
+
+ Future<List<Map<String, dynamic>>> getMaktabAcademics() async {
+   Database db = await database;
+   return await db.query('maktab_academics',
+       where:
+           '(is_deleted = 0 OR is_deleted IS NULL) AND system_type = \'${SystemTypeGlobal.currentSystemType.value}\'',
+       orderBy: 'date DESC');
+ }
+
+ Future<int> insertMaktabAcademic(Map<String, dynamic> row) async {
+   Database db = await database;
+   return await db.insert('maktab_academics', row);
+ }
+
+ Future<int> updateMaktabAcademic(int id, Map<String, dynamic> row) async {
+   Database db = await database;
+   return await db
+       .update('maktab_academics', row, where: 'id = ?', whereArgs: [id]);
+ }
+
+ Future<int> deleteMaktabAcademic(int id) async {
+   Database db = await database;
+   return await db.update(
+       'maktab_academics', {'is_deleted': 1, 'is_synced': 0},
+       where: 'id = ?', whereArgs: [id]);
+ }
+
+ Future<List<Map<String, dynamic>>> getMaktabTeacherAttendance() async {
+   Database db = await database;
+   return await db.query('maktab_teacher_attendance',
+       where:
+           '(is_deleted = 0 OR is_deleted IS NULL) AND system_type = \'${SystemTypeGlobal.currentSystemType.value}\'');
+ }
+
+ Future<List<Map<String, dynamic>>> getMaktabTeacherPeriodAttendanceByDate(
+     String date) async {
+   Database db = await database;
+   return await db.query('maktab_teacher_attendance',
+       where:
+           'date = ? AND (is_deleted = 0 OR is_deleted IS NULL) AND system_type = \'${SystemTypeGlobal.currentSystemType.value}\'',
+       whereArgs: [date]);
+ }
+
+ Future<int> insertMaktabTeacherPeriodAttendance(
+     Map<String, dynamic> row) async {
+   Database db = await database;
+   return await db.insert('maktab_teacher_attendance', row);
+ }
+
+ Future<int> updateMaktabTeacherAttendance(
+     int id, Map<String, dynamic> row) async {
+   Database db = await database;
+   return await db.update('maktab_teacher_attendance', row,
+       where: 'id = ?', whereArgs: [id]);
+ }
+
+ Future<int> deleteMaktabTeacherAttendance(int id) async {
+   Database db = await database;
+   return await db.update(
+       'maktab_teacher_attendance', {'is_deleted': 1, 'is_synced': 0},
+       where: 'id = ?', whereArgs: [id]);
+ }
+
+ Future<void> saveMaktabTeacherPeriodAttendance(int teacherId, String date,
+     int period, String status, int delay, int userId, String userName) async {
+   Database db = await database;
+   final existing = await db.query('maktab_teacher_attendance',
+       where: 'teacher_id = ? AND date = ?', whereArgs: [teacherId, date]);
+   if (existing.isNotEmpty) {
+     await db.update(
+         'maktab_teacher_attendance',
+         {
+           'status': status,
+           'delay_minutes': delay,
+           'user_id': userId,
+           'user_name': userName,
+           'is_synced': 0,
+           'is_deleted': 0
+         },
+         where: 'id = ?',
+         whereArgs: [existing.first['id']]);
+   } else {
+     await db.insert('maktab_teacher_attendance', {
+       'teacher_id': teacherId,
+       'date': date,
+       'status': status,
+       'delay_minutes': delay,
+       'user_id': userId,
+       'user_name': userName,
+       'is_synced': 0,
+       'is_deleted': 0
+     });
+   }
+ }
+
+ // --- Masjid Finance Helper Methods ---
+ // ---------------- MAKTAB METHODS ADDED FOR USER ----------------
+
+ Future<List<Map<String, dynamic>>> getPagedMaktabStudentsForUser(
+     {required int limit,
+     required int offset,
+     String? status,
+     String? searchQuery}) async {
+   Database db = await database;
+   String query =
+       'SELECT * FROM maktab_students WHERE (is_deleted = 0 OR is_deleted IS NULL)';
+   List<dynamic> args = [];
+
+   if (status != null && status.isNotEmpty) {
+     query += ' AND status = ?';
+     args.add(status);
+   }
+
+   if (searchQuery != null && searchQuery.isNotEmpty) {
+     query += ' AND name LIKE ?';
+     args.add('%' + searchQuery + '%');
+   }
+
+   query += ' ORDER BY id DESC LIMIT ? OFFSET ?';
+   args.addAll([limit, offset]);
+
+   return await db.rawQuery(query, args);
+ }
+
+ Future<List<Map<String, dynamic>>> searchMaktabStudentsForUser(
+     String queryStr,
+     {String? status}) async {
+   return getPagedMaktabStudentsForUser(
+       limit: 100, offset: 0, status: status, searchQuery: queryStr);
+ }
+
+ Future<List<Map<String, dynamic>>> getPagedMaktabTeachersForUser(
+     {required int limit, required int offset}) async {
+   Database db = await database;
+   return await db.query('maktab_teachers',
+       where:
+           '(is_deleted = 0 OR is_deleted IS NULL) AND system_type = \'${SystemTypeGlobal.currentSystemType.value}\'',
+       limit: limit,
+       offset: offset,
+       orderBy: 'id DESC');
+ }
+
+ Future<List<Map<String, dynamic>>> searchMaktabTeachersForUser(
+     String queryStr) async {
+   Database db = await database;
+   return await db.query('maktab_teachers',
+       where: '(is_deleted = 0 OR is_deleted IS NULL) AND name LIKE ?',
+       whereArgs: ['%' + queryStr + '%'],
+       orderBy: 'id DESC');
+ }
+
+ Future<List<Map<String, dynamic>>> getMaktabExamsForUser() async {
+   Database db = await database;
+   return await db.query('maktab_exams',
+       where:
+           '(is_deleted = 0 OR is_deleted IS NULL)',
+       orderBy: 'id DESC');
+ }
+
+
+  Future<List<Map<String, dynamic>>> getStaff() async {
+    final db = await database;
+    return await db.query('teachers',
+        where:
+            'is_deleted = 0 AND system_type = \'${SystemTypeGlobal.currentSystemType.value}\' AND staff_type != \'Teacher\' AND staff_type IS NOT NULL AND staff_type != \'\' AND staff_type != \'استاد / قاری\'');
+}
 }
