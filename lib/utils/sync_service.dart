@@ -1,6 +1,5 @@
 // ignore_for_file: library_private_types_in_public_api, use_build_context_synchronously, deprecated_member_use
 import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -8,7 +7,6 @@ import 'package:flutter/foundation.dart';
 import '../db_helper.dart';
 import 'globals.dart';
 import 'network_service.dart';
-import 'system_type_global.dart';
 
 class SyncService {
   static const List<String> _tables = [
@@ -21,7 +19,7 @@ class SyncService {
     'attendance_teachers',
     'teacher_period_attendance',
     'finance',
-
+    'masjid_finance',
     'heads',
     'exams',
     'exam_results',
@@ -36,14 +34,13 @@ class SyncService {
     'acc_chart_of_accounts',
     'acc_vouchers',
     'acc_ledger_entries',
-    'acc_payroll', 'in_kind_donations', 'masjid_assets', 'masjid_finance',
+    'acc_payroll',
     'acc_invoices',
   ];
 
   static const Map<String, String> _apiKeyMap = {
     'finance': 'finance_entries',
     'masjid_finance': 'masjid_finance_entries',
-
     'heads': 'heads',
     'hifz_record': 'hifz_entries',
     'nazira_record': 'nazira_record',
@@ -61,8 +58,6 @@ class SyncService {
     'acc_vouchers': 'acc_vouchers',
     'acc_ledger_entries': 'acc_ledger_entries',
     'acc_payroll': 'acc_payroll',
-    'in_kind_donations': 'in_kind_donations',
-    'masjid_assets': 'masjid_assets',
     'acc_invoices': 'acc_invoices',
   };
 
@@ -70,7 +65,7 @@ class SyncService {
     'students': 'manage_students',
     'teachers': 'manage_teachers',
     'finance': 'manage_finance',
-
+    'masjid_finance': 'manage_finance',
     'heads': 'manage_finance',
     'fee_submissions': 'manage_finance',
     'hifz_record': 'manage_hifz',
@@ -93,20 +88,7 @@ class SyncService {
     'acc_ledger_entries': 'manage_erp',
     'acc_payroll': 'manage_finance',
     'acc_invoices': 'manage_erp',
-    'in_kind_donations': 'manage_finance',
-    'masjid_assets': 'manage_finance',
-    'masjid_finance': 'manage_finance',
   };
-
-  static Map<String, dynamic> _decodeJsonMap(String body) {
-    final jsonStart = body.indexOf('{');
-    final jsonEnd = body.lastIndexOf('}');
-    final cleanBody = (jsonStart >= 0 && jsonEnd > jsonStart)
-        ? body.substring(jsonStart, jsonEnd + 1)
-        : body;
-    final decoded = jsonDecode(cleanBody);
-    return decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
-  }
 
   static Future<void> runTwoWaySync() async {
     final db = DBHelper();
@@ -146,7 +128,7 @@ class SyncService {
             throw Exception('HTTP ${response.statusCode}: ${response.body}');
           }
 
-          final body = _decodeJsonMap(response.body);
+          final body = jsonDecode(response.body);
           if (body['status'] != 'success' &&
               body['status'] != 'partial_success') {
             throw Exception(body['message']?.toString() ?? 'Sync up failed');
@@ -238,14 +220,13 @@ class SyncService {
   }
 
   static Future<void> _syncDown(DBHelper db) async {
-    final sys = SystemTypeGlobal.currentSystemType.value;
     final pullResponse =
-        await NetworkService.getWithFallbackAction('sync_down&system_type=${Uri.encodeComponent(sys)}');
+        await NetworkService.getWithFallbackAction('sync_down');
     if (pullResponse.statusCode != 200) {
       throw Exception('Sync down failed: ${pullResponse.statusCode}');
     }
 
-    final pullBody = _decodeJsonMap(pullResponse.body);
+    final pullBody = jsonDecode(pullResponse.body);
     if (pullBody['status'] == 'success' && pullBody['data'] != null) {
       await db.saveServerData(Map<String, dynamic>.from(pullBody['data']));
       return;
@@ -295,27 +276,5 @@ class SyncService {
       debugPrint("File to base64 error: $e");
     }
     return path;
-  }
-
-  static Future<void> pushNewClassPeriodBook(
-      int classId, int periodNo, String newBook) async {
-    final Map<String, dynamic> data = {
-      'action': 'push_class_period_book',
-      'class_id': classId,
-      'period_no': periodNo,
-      'new_book': newBook,
-    };
-    try {
-      final response = await http.post(
-        Uri.parse(apiUrl),
-        body: jsonEncode(data),
-        headers: {'Content-Type': 'application/json'},
-      );
-      if (response.statusCode != 200) {
-        print("Failed to push new book: ${response.body}");
-      }
-    } catch (e) {
-      print("Error pushing new book: $e");
-    }
   }
 }

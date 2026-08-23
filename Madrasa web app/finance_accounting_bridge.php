@@ -238,3 +238,5 @@ if (!function_exists('payroll_accounting_post')) {
         }
     }
 }
+
+?>

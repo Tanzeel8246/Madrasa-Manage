@@ -145,26 +145,6 @@ function translateStatusClean($status) {
                         $nazira_map[$rec['date']][$rec['student_id']] = $rec;
                     }
 
-                    // Fetch Attendance for date range
-                    $att_sql = "SELECT a.student_id, a.date, a.status_1, a.status_2 FROM attendance a JOIN students s ON a.student_id = s.id WHERE a.date BETWEEN ? AND ? AND (s.is_deleted = 0 OR s.is_deleted IS NULL) AND s.class = ?";
-                    try {
-                        $att_stmt = $pdo->prepare($att_sql);
-                        $att_stmt->execute([$start_date, $end_date, $selected_class]);
-                        $att_records = $att_stmt->fetchAll(PDO::FETCH_ASSOC);
-                    } catch (PDOException $e) { $att_records = []; }
-                    $att_map = [];
-                    foreach ($att_records as $a) {
-                        $s1 = strtoupper(trim($a['status_1'] ?? ''));
-                        $s2 = strtoupper(trim($a['status_2'] ?? ''));
-                        if ($s1 === 'A' || $s2 === 'A' || $s1 === 'غ' || $s2 === 'غ') {
-                            $att_map[$a['date']][$a['student_id']] = 'A';
-                        } elseif ($s1 === 'L' || $s2 === 'L' || $s1 === 'ر' || $s2 === 'ر') {
-                            $att_map[$a['date']][$a['student_id']] = 'L';
-                        } else {
-                            $att_map[$a['date']][$a['student_id']] = 'P';
-                        }
-                    }
-
                     // Generate dates in range (descending)
                     $report_dates = [];
                     $start_time = strtotime($start_date);
@@ -185,15 +165,8 @@ function translateStatusClean($status) {
                             foreach ($all_nazira_students as $student) {
                                 $student_id = $student['id'];
                                 $rec = $nazira_map[$date][$student_id] ?? null;
-                                $attStatus = $att_map[$date][$student_id] ?? 'P';
                                 
-                                if ($attStatus === 'A' || $attStatus === 'L') {
-                                    $attLabel = ($attStatus === 'A') ? 'غیر حاضر' : 'رخصت پر';
-                                    $attClass = ($attStatus === 'A') ? 'bg-danger text-white' : 'bg-warning text-dark';
-                                    $badgeHtml = "<span class='badge {$attClass}'>{$attLabel}</span>";
-                                    $morning_html = $badgeHtml;
-                                    $evening_html = $badgeHtml;
-                                } elseif ($rec) {
+                                if ($rec) {
                                     $students_with_records[] = $student_id;
                                     $totalMorning += getGradePoints($rec['morning_status'], 50);
                                     $totalEvening += getGradePoints($rec['evening_status'], 50);

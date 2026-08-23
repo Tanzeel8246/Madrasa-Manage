@@ -136,7 +136,7 @@ function numberToUrdu($num) {
         .receipt-container {
             width: 250mm; 
             height: 160mm; 
-            background-image: url('<?= (isset($data['system_type']) && $data['system_type'] == 'Masjid') ? 'uploads/MAMFSS.webp' : 'uploads/receipt_bg.webp' ?>');
+            background-image: url('uploads/receipt_bg.webp');
             background-size: 100% 100%;
             background-repeat: no-repeat;
             background-position: center;

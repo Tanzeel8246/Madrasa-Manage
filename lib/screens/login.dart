@@ -29,18 +29,10 @@ class _LoginPageState extends State<LoginPage> {
   String _errorMessage = '';
 
   Map<String, dynamic> _decodeResponseBody(String body) {
-    if (body.trim().isEmpty) return <String, dynamic>{};
-    try {
-      final jsonStart = body.indexOf('{');
-      final jsonEnd = body.lastIndexOf('}');
-      final cleanBody = (jsonStart >= 0 && jsonEnd > jsonStart)
-          ? body.substring(jsonStart, jsonEnd + 1)
-          : body;
-      final decoded = jsonDecode(cleanBody);
-      return decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
-    } catch (_) {
-      return <String, dynamic>{};
-    }
+    final jsonStart = body.indexOf('{');
+    final cleanBody = jsonStart >= 0 ? body.substring(jsonStart) : body;
+    final decoded = jsonDecode(cleanBody);
+    return decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
   }
 
   String _networkErrorText(Object? error) {
@@ -69,19 +61,14 @@ class _LoginPageState extends State<LoginPage> {
     final username = _usernameController.text.trim();
     final password = _passwordController.text.trim();
     String serverMessage = '';
-    bool hasNetworkException = false;
-    Object? caughtError;
 
-    // 1. Admin / Teacher / Nazim Login
     try {
       final res = await NetworkService.publicPostWithFallbackAction(
         'login_admin',
         {'username': username, 'password': password},
       );
       final body = _decodeResponseBody(res.body);
-      if (res.statusCode != 200) {
-        throw Exception("Server returned ${res.statusCode}");
-      }
+
       if (res.statusCode == 200 && body['status'] == 'success') {
         final role = body['role']?.toString() ?? 'admin';
         currentUserRole.value = role;
@@ -92,6 +79,7 @@ class _LoginPageState extends State<LoginPage> {
         currentUserPermissions.value =
             perms?.map((e) => e.toString()).toList() ?? [];
 
+        // Teacher/Nazim: classes table سے allowed classes load کریں (sync_down پہلے سے filter کر چکا ہے)
         List<String> assignedClasses = [];
         if (role != 'admin') {
           try {
@@ -119,25 +107,20 @@ class _LoginPageState extends State<LoginPage> {
           MaterialPageRoute(builder: (_) => const DashboardPage()),
         );
         return;
-      } else if (body['message'] != null && body['message'].toString().isNotEmpty) {
-        serverMessage = body['message'].toString();
       }
+
+      serverMessage = body['message']?.toString() ?? '';
     } catch (e) {
-      hasNetworkException = true;
-      caughtError = e;
-      debugPrint("Admin login error: $e");
+      serverMessage = _networkErrorText(e);
     }
 
-    // 2. Student Login
     try {
       final studentRes = await NetworkService.publicPostWithFallbackAction(
         'login_student',
         {'username': username, 'password': password},
       );
       final body = _decodeResponseBody(studentRes.body);
-      if (studentRes.statusCode != 200) {
-        throw Exception("Server returned ${studentRes.statusCode}");
-      }
+
       if (studentRes.statusCode == 200 && body['status'] == 'success') {
         currentUserRole.value = 'student';
         currentUserId.value =
@@ -158,64 +141,55 @@ class _LoginPageState extends State<LoginPage> {
           MaterialPageRoute(builder: (_) => const DashboardPage()),
         );
         return;
-      } else if (serverMessage.isEmpty && body['message'] != null && body['message'].toString().isNotEmpty) {
-        serverMessage = body['message'].toString();
       }
-    } catch (e) {
-      hasNetworkException = true;
-      caughtError = e;
-      debugPrint("Student login error: $e");
-    }
 
-    // 3. Parent Login
-    try {
-      final parentRes = await NetworkService.publicPostWithFallbackAction(
-        'login_parent',
-        {'phone': username, 'password': password},
-      );
-      final parentBody = _decodeResponseBody(parentRes.body);
-      if (parentRes.statusCode != 200) {
-        throw Exception("Server returned ${parentRes.statusCode}");
-      }
-      if (parentRes.statusCode == 200 && parentBody['status'] == 'success') {
-        currentUserRole.value = 'parent';
-        currentUserId.value = int.tryParse(parentBody['parent_id']?.toString() ?? '1');
-        currentUserName.value = username;
-        currentUserToken.value = parentBody['token']?.toString();
-
-        await SessionManager.saveSession(
-          'parent',
-          currentUserId.value!,
-          token: currentUserToken.value,
-          name: currentUserName.value,
+      // If student login fails, try parent login
+      try {
+        final parentRes = await NetworkService.publicPostWithFallbackAction(
+          'login_parent',
+          {'phone': username, 'password': password}, // Parents use phone as username
         );
+        final parentBody = _decodeResponseBody(parentRes.body);
 
-        if (!mounted) return;
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const DashboardPage()),
-        );
-        return;
-      } else if (serverMessage.isEmpty && parentBody['message'] != null && parentBody['message'].toString().isNotEmpty) {
-        serverMessage = parentBody['message'].toString();
+        if (parentRes.statusCode == 200 && parentBody['status'] == 'success') {
+          currentUserRole.value = 'parent';
+          currentUserId.value = int.tryParse(parentBody['parent_id']?.toString() ?? '1');
+          currentUserName.value = username;
+          currentUserToken.value = parentBody['token']?.toString();
+
+          await SessionManager.saveSession(
+            'parent',
+            currentUserId.value!,
+            token: currentUserToken.value,
+            name: currentUserName.value,
+          );
+
+          if (!mounted) return;
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const DashboardPage()),
+          );
+          return;
+        }
+      } catch (e) {
+        // Ignore parent login network errors and just show the student error
       }
+
+      serverMessage = body['message']?.toString() ?? serverMessage;
+      if (!mounted) return;
+      setState(() {
+        _errorMessage =
+            serverMessage.isNotEmpty ? serverMessage : _invalidLoginText();
+        _isLoading = false;
+      });
     } catch (e) {
-      hasNetworkException = true;
-      caughtError = e;
-      debugPrint("Parent login error: $e");
+      if (!mounted) return;
+      setState(() {
+        _errorMessage =
+            serverMessage.isNotEmpty ? serverMessage : _networkErrorText(e);
+        _isLoading = false;
+      });
     }
-
-    if (!mounted) return;
-    setState(() {
-      if (serverMessage.isNotEmpty) {
-        _errorMessage = serverMessage;
-      } else if (hasNetworkException && caughtError != null) {
-        _errorMessage = _networkErrorText(caughtError);
-      } else {
-        _errorMessage = _invalidLoginText();
-      }
-      _isLoading = false;
-    });
   }
 
   Future<void> _resetPassword() async {

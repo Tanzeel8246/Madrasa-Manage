@@ -15,16 +15,14 @@ $studentColumns = $pdo->query("SHOW COLUMNS FROM students")->fetchAll(PDO::FETCH
 $studentClassExpr = in_array('class_name', $studentColumns, true)
     ? "TRIM(COALESCE(NULLIF(class, ''), NULLIF(class_name, '')))"
     : "TRIM(class)";
-$sys_type = $_SESSION['system_type'] ?? 'Madrasa';
-$stmt = $pdo->prepare("
+$stmt = $pdo->query("
     SELECT LOWER($studentClassExpr) AS class_key, COUNT(*) AS cnt
     FROM students
-    WHERE system_type = ? AND (is_deleted = 0 OR is_deleted IS NULL)
+    WHERE (is_deleted = 0 OR is_deleted IS NULL)
       AND (status IS NULL OR status = '' OR LOWER(TRIM(status)) IN ('active', 'present', 'حاضر', 'Ø­Ø§Ø¶Ø±'))
       AND $studentClassExpr <> ''
     GROUP BY LOWER($studentClassExpr)
 ");
-$stmt->execute([$sys_type]);
 $counts = [];
 while ($row = $stmt->fetch()) {
     $counts[$row['class_key']] = (int)$row['cnt'];

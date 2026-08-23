@@ -20,12 +20,6 @@ class _ReportsAcademicPageState extends State<ReportsAcademicPage> {
   final Color bgColor = const Color(0xFFF1EFE7);
   final Color primaryGreen = const Color(0xFF284D3D);
 
-  int _recitedCount = 0;
-  int _naaghaCount = 0;
-  int _absentCount = 0;
-  int _leaveCount = 0;
-  Map<String, String> _attMap = {};
-
   Map<String, List<Map<String, dynamic>>> _reportsGrouped = {};
   List<Map<String, dynamic>> _students = [];
   bool isLoading = true;
@@ -150,77 +144,6 @@ class _ReportsAcademicPageState extends State<ReportsAcademicPage> {
       }
 
       _reportsGrouped = grouped;
-
-      final attRows = await database.query('attendance');
-      Map<String, String> attMap = {};
-      for (var a in attRows) {
-        String dt = a['date']?.toString().trim() ?? '';
-        String sid = a['student_id']?.toString().trim() ?? '';
-        String st = [a['status'], a['status_1'], a['status_2'], a['status_3'], a['status_4']]
-            .where((e) => e != null && e.toString().trim().isNotEmpty)
-            .join(' ')
-            .toUpperCase();
-        
-        var tokens = st.split(RegExp(r'\s+'));
-        String val = 'P';
-        if (st.contains('ABSENT') || st.contains('غائب') || st.contains('غیر حاضر') || tokens.contains('A') || tokens.contains('غ')) {
-          val = 'A';
-        } else if (st.contains('LEAVE') || st.contains('رخصت') || tokens.contains('L') || tokens.contains('ر')) {
-          val = 'L';
-        }
-        attMap['${dt}_$sid'] = val;
-        
-        try {
-          DateTime? d;
-          if (dt.contains('/')) {
-            var parts = dt.split('/');
-            if (parts.length == 3) {
-              if (parts[0].length == 4) {
-                d = DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
-              } else {
-                d = DateTime(int.parse(parts[2]), int.parse(parts[1]), int.parse(parts[0]));
-              }
-            }
-          } else {
-            d = DateTime.tryParse(dt);
-          }
-          if (d != null) {
-            String isoDate = "${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}";
-            attMap['${isoDate}_$sid'] = val;
-          }
-        } catch (_) {}
-      }
-
-      int recited = 0;
-      int naagha = 0;
-      int absentCount = 0;
-      int leaveCount = 0;
-
-      for (var entry in grouped.entries) {
-        for (var r in entry.value) {
-          String dt = r['date']?.toString() ?? '';
-          String sid = entry.key;
-          String att = attMap['${dt}_$sid'] ?? 'P';
-          if (att == 'A') {
-            absentCount++;
-          } else if (att == 'L') {
-            leaveCount++;
-          } else {
-            String grade = (r['grade'] ?? r['lesson_details'] ?? '').toString();
-            if (grade.contains('ناغہ') || grade.isEmpty || grade == '-') {
-              naagha++;
-            } else {
-              recited++;
-            }
-          }
-        }
-      }
-
-      _recitedCount = recited;
-      _naaghaCount = naagha;
-      _absentCount = absentCount;
-      _leaveCount = leaveCount;
-      _attMap = attMap;
     } catch (e) {
       debugPrint("Load Academic Report Error: $e");
     } finally {
@@ -362,7 +285,6 @@ class _ReportsAcademicPageState extends State<ReportsAcademicPage> {
     return Row(
       children: [
         _cell(isUrduGlobal.value ? "تاریخ" : "Date", 80, isHeader: true),
-        _cell(isUrduGlobal.value ? "حاضری" : "Attendance", 70, isHeader: true),
         _cell(isUrduGlobal.value ? "کلاس" : "Class", 100, isHeader: true),
         _cell(isUrduGlobal.value ? "مضمون" : "Subject", subjectWidth,
             isHeader: true),
@@ -375,38 +297,13 @@ class _ReportsAcademicPageState extends State<ReportsAcademicPage> {
   }
 
   Widget _buildDataRowFor(Map<String, dynamic> r, double subjectWidth) {
-    String dt = r['date']?.toString() ?? '';
-    String sid = r['student_id']?.toString() ?? '';
-    String att = _attMap['${dt}_$sid'] ?? 'P';
-    String attStr = isUrduGlobal.value ? 'حاضر' : 'P';
-    Color attColor = Colors.green;
-    if (att == 'A') {
-      attStr = isUrduGlobal.value ? 'غیر حاضر' : 'A';
-      attColor = Colors.red;
-    } else if (att == 'L') {
-      attStr = isUrduGlobal.value ? 'رخصت' : 'L';
-      attColor = Colors.orange.shade800;
-    }
-
-    String lessonDet = r['lesson_details']?.toString() ?? '-';
-    String gradeDet = r['grade']?.toString() ?? '-';
-
-    if (att == 'A') {
-      if (lessonDet == '-' || lessonDet.isEmpty) lessonDet = isUrduGlobal.value ? 'غیر حاضر' : 'Absent';
-      if (gradeDet == '-' || gradeDet.isEmpty) gradeDet = isUrduGlobal.value ? 'غیر حاضر' : 'Absent';
-    } else if (att == 'L') {
-      if (lessonDet == '-' || lessonDet.isEmpty) lessonDet = isUrduGlobal.value ? 'رخصت' : 'Leave';
-      if (gradeDet == '-' || gradeDet.isEmpty) gradeDet = isUrduGlobal.value ? 'رخصت' : 'Leave';
-    }
-
     return Row(
       children: [
         _cell(r['date'] ?? '-', 80, bold: true),
-        _cell(attStr, 70, textColor: attColor, bold: true),
         _cell(r['class_name'] ?? '-', 100),
         _cell(r['subject'] ?? '-', subjectWidth),
-        _cell(lessonDet, 250, textColor: (att == 'A' || att == 'L') ? attColor : Colors.black),
-        _cell(gradeDet, 80, textColor: (att == 'A' || att == 'L') ? attColor : getStatusColor(r['grade'])),
+        _cell(r['lesson_details'] ?? '-', 250),
+        _cell(r['grade'] ?? '-', 80, textColor: getStatusColor(r['grade'])),
         _cell(r['remarks'] ?? '-', 200),
       ],
     );
@@ -426,42 +323,8 @@ class _ReportsAcademicPageState extends State<ReportsAcademicPage> {
     );
   }
 
-  Widget _buildSummaryBanner() {
-    return Container(
-      width: 830,
-      margin: const EdgeInsets.only(top: 10, bottom: 5),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: primaryGreen.withValues(alpha: 0.3)),
-        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _summaryCard(isUrduGlobal.value ? "سنانے والے طلبہ" : "Recited", _recitedCount.toString(), Colors.green),
-          _summaryCard(isUrduGlobal.value ? "ناغہ کرنے والے طلبہ" : "Naagha", _naaghaCount.toString(), Colors.red),
-          _summaryCard(isUrduGlobal.value ? "غیر حاضر طلبہ" : "Absent", _absentCount.toString(), Colors.red.shade900),
-          _summaryCard(isUrduGlobal.value ? "رخصت طلبہ" : "Leave", _leaveCount.toString(), Colors.orange.shade800),
-        ],
-      ),
-    );
-  }
-
-  Widget _summaryCard(String title, String count, Color color) {
-    return Column(
-      children: [
-        Text(count, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
-        const SizedBox(height: 2),
-        Text(title, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey.shade800)),
-      ],
-    );
-  }
-
   List<Widget> _buildGroupedTables() {
     List<Widget> sections = [];
-    sections.add(_buildSummaryBanner());
 
     if (_reportsGrouped.isEmpty) {
       sections.add(Container(

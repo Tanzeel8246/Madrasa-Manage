@@ -98,9 +98,8 @@ if (isset($_POST['save_student'])) {
             $s_no = isset($parts[1]) ? (int)$parts[1] : 0;
 
             $adm_date = !empty($_POST['admission_date']) ? $_POST['admission_date'] : date('Y-m-d');
-            $sys = $_SESSION['system_type'] ?? 'Madrasa';
-            $sql = "INSERT INTO students (name, father_name, admission_number, serial_no, hijri_year, class, contact_number, address, status, admission_date, photo, system_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Active', ?, ?, ?)";
-            $pdo->prepare($sql)->execute([$name, $fname, $adm_no, $s_no, $h_year, $cls, $contact, $addr, $adm_date, $photo_path, $sys]);
+            $sql = "INSERT INTO students (name, father_name, admission_number, serial_no, hijri_year, class, contact_number, address, status, admission_date, photo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Active', ?, ?)";
+            $pdo->prepare($sql)->execute([$name, $fname, $adm_no, $s_no, $h_year, $cls, $contact, $addr, $adm_date, $photo_path]);
             $msg = "<div class='alert alert-success fw-bold'>✅ نیا طالب علم ایڈ ہو گیا!</div>";
         }
         echo "<script>window.location='students.php';</script>";
@@ -133,12 +132,11 @@ if (!$is_admin) {
 }
 
 if (!empty($_GET['class_filter'])) {
-    $stmt = $pdo->prepare("SELECT * FROM students WHERE status = 'Active' AND is_deleted = 0 AND system_type = '$sys' AND class = ? AND ($class_condition) ORDER BY admission_number DESC");
+    $stmt = $pdo->prepare("SELECT * FROM students WHERE status = 'Active' AND is_deleted = 0 AND class = ? AND ($class_condition) ORDER BY admission_number DESC");
     $stmt->execute([$_GET['class_filter']]);
     $active_students = $stmt->fetchAll();
 } else {
-    $sys = $_SESSION['system_type'] ?? 'Madrasa';
-$active_students = $pdo->query("SELECT * FROM students WHERE status = 'Active' AND is_deleted = 0 AND system_type = '$sys' AND ($class_condition) ORDER BY admission_number DESC")->fetchAll();
+    $active_students = $pdo->query("SELECT * FROM students WHERE status = 'Active' AND is_deleted = 0 AND ($class_condition) ORDER BY admission_number DESC")->fetchAll();
 }
 
 // Group active students by class
@@ -165,8 +163,7 @@ foreach (array_keys($grouped_students) as $c) {
 }
 
 // 2. فارغ التحصیل طلباء (Alumni)
-$sys = $_SESSION['system_type'] ?? 'Madrasa';
-$alumni_students = $pdo->query("SELECT * FROM students WHERE status = 'Alumni' AND is_deleted = 0 AND system_type = '$sys' AND ($class_condition) ORDER BY graduation_date DESC")->fetchAll();
+$alumni_students = $pdo->query("SELECT * FROM students WHERE status = 'Alumni' AND is_deleted = 0 AND ($class_condition) ORDER BY graduation_date DESC")->fetchAll();
 
 // --- ایڈٹ موڈ ---
 $edit_data = null;

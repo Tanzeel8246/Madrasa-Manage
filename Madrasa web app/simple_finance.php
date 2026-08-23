@@ -1,7 +1,7 @@
 <?php
 require_once 'db.php';
 require_once 'finance_accounting_bridge.php';
-if (session_status() === PHP_SESSION_NONE) { session_start(); }
+session_start();
 
 if (!isset($_SESSION['user_id']) || !app_has_perm('manage_finance')) {
     header("Location: dashboard.php");
@@ -10,7 +10,6 @@ if (!isset($_SESSION['user_id']) || !app_has_perm('manage_finance')) {
 
 $user_id = $_SESSION['user_id'];
 $user_name = $_SESSION['name'] ?? 'Admin';
-$sys = $_SESSION['system_type'] ?? 'Madrasa';
 
 function next_user_receipt_no(PDO $pdo, $userId) {
     $userId = max(1, (int)$userId);
@@ -26,7 +25,7 @@ function next_user_receipt_no(PDO $pdo, $userId) {
     return $nextNo;
 }
 
-// Delete Record
+// Delete
 if (isset($_GET['del_id'])) {
     $delId = (int)$_GET['del_id'];
     $pdo->prepare("UPDATE finance SET is_deleted = 1 WHERE id = ?")->execute([$delId]);
@@ -35,198 +34,147 @@ if (isset($_GET['del_id'])) {
     exit;
 }
 
-// Handle Add/Edit Record submission
+// Handle form submission
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_record'])) {
-    $type = $_POST['type']; // Income or Expense
+    $type = $_POST['type'];
     $date = $_POST['date'];
     $head_id = (int)$_POST['head_id'];
     $amount = (float)$_POST['amount'];
-    $donor_name = $_POST['donor_name'] ?? '';
+    $donor_name = $_POST['donor_name'];
     $donor_address = $_POST['donor_address'] ?? '';
-    $manual_receipt_no = $_POST['manual_receipt_no'] ?? '';
-    $description = $_POST['description'] ?? '';
+    $manual_receipt_no = $_POST['manual_receipt_no'];
+    $description = $_POST['description'];
     
-    if (isset($_POST['edit_id']) && !empty($_POST['edit_id'])) {
-        $edit_id = (int)$_POST['edit_id'];
-        $stmt = $pdo->prepare("UPDATE finance SET type=?, head_id=?, amount=?, date=?, donor_name=?, donor_address=?, manual_receipt_no=?, description=? WHERE id=?");
-        $stmt->execute([$type, $head_id, $amount, $date, $donor_name, $donor_address, $manual_receipt_no, $description, $edit_id]);
-        header("Location: simple_finance.php?msg=edited");
-        exit;
-    } else {
-        $comp_receipt_no = ($type == 'Income') ? next_user_receipt_no($pdo, $user_id) : null;
-        $stmt = $pdo->prepare("INSERT INTO finance (user_id, user_name, type, head_id, amount, date, donor_name, donor_address, manual_receipt_no, computer_receipt_no, description, is_deleted, system_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)");
-        $stmt->execute([$user_id, $user_name, $type, $head_id, $amount, $date, $donor_name, $donor_address, $manual_receipt_no, $comp_receipt_no, $description, $sys]);
-        finance_accounting_post($pdo, (int)$pdo->lastInsertId());
-        header("Location: simple_finance.php?msg=added");
-        exit;
-    }
+    $comp_receipt_no = ($type == 'Income') ? next_user_receipt_no($pdo, $user_id) : null;
+    
+    $stmt = $pdo->prepare("INSERT INTO finance (user_id, user_name, type, head_id, amount, date, donor_name, donor_address, manual_receipt_no, computer_receipt_no, description, is_deleted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)");
+    $stmt->execute([$user_id, $user_name, $type, $head_id, $amount, $date, $donor_name, $donor_address, $manual_receipt_no, $comp_receipt_no, $description]);
+    finance_accounting_post($pdo, (int)$pdo->lastInsertId());
+    header("Location: simple_finance.php?msg=added");
+    exit;
 }
 
-// Add New Head
+// Add new head
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_head'])) {
     $head_name = trim($_POST['head_name']);
     $head_type = $_POST['head_type'];
     if (!empty($head_name) && !empty($head_type)) {
         $stmt = $pdo->prepare("INSERT INTO heads (name, type) VALUES (?, ?)");
         $stmt->execute([$head_name, $head_type]);
-        sync_all_heads_with_chart_and_departments($pdo);
         header("Location: simple_finance.php?msg=head_added");
         exit;
     }
 }
 
-// Edit Head
-if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['edit_head'])) {
-    $head_id = (int)$_POST['head_id'];
-    $head_name = trim($_POST['head_name']);
-    $head_type = $_POST['head_type'];
-    if ($head_id > 0 && !empty($head_name)) {
-        $pdo->prepare("UPDATE heads SET name = ?, type = ? WHERE id = ?")->execute([$head_name, $head_type, $head_id]);
-        sync_all_heads_with_chart_and_departments($pdo);
-        header("Location: simple_finance.php?msg=head_updated");
-        exit;
-    }
-}
-
-// Delete Head
-if (isset($_GET['del_head_id'])) {
-    $del_head_id = (int)$_GET['del_head_id'];
-    $pdo->prepare("UPDATE heads SET is_deleted = 1 WHERE id = ?")->execute([$del_head_id]);
-    sync_all_heads_with_chart_and_departments($pdo);
-    header("Location: simple_finance.php?msg=head_deleted");
-    exit;
-}
-
-// Sync Heads
-if (isset($_POST['sync_heads']) || isset($_GET['sync_heads'])) {
-    sync_all_heads_with_chart_and_departments($pdo);
-    header("Location: simple_finance.php?msg=heads_synced");
-    exit;
-}
 
 // Fetch heads
 sync_all_heads_with_chart_and_departments($pdo);
-$income_heads = $pdo->query("SELECT * FROM heads WHERE type = 'Income' AND is_deleted = 0 ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
-$expense_heads = $pdo->query("SELECT * FROM heads WHERE type = 'Expense' AND is_deleted = 0 ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
+$heads = $pdo->query("SELECT * FROM heads WHERE is_deleted = 0 ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
 
-// Fetch records filtered by Income & Expense
+// Fetch recent records
 $limit_val = isset($_GET['all']) ? 5000 : 500;
 if (($_SESSION['role'] ?? '') === 'admin') {
-    $income_records = $pdo->query("SELECT f.*, h.name as head_name FROM finance f LEFT JOIN heads h ON f.head_id = h.id WHERE f.type = 'Income' AND (f.system_type = '$sys' OR f.system_type IS NULL OR f.system_type = '') AND f.is_deleted = 0 ORDER BY f.date DESC, f.id DESC LIMIT $limit_val")->fetchAll(PDO::FETCH_ASSOC);
-    $expense_records = $pdo->query("SELECT f.*, h.name as head_name FROM finance f LEFT JOIN heads h ON f.head_id = h.id WHERE f.type = 'Expense' AND (f.system_type = '$sys' OR f.system_type IS NULL OR f.system_type = '') AND f.is_deleted = 0 ORDER BY f.date DESC, f.id DESC LIMIT $limit_val")->fetchAll(PDO::FETCH_ASSOC);
+    $records = $pdo->query("SELECT f.*, h.name as head_name FROM finance f LEFT JOIN heads h ON f.head_id = h.id WHERE f.is_deleted = 0 ORDER BY f.date DESC, f.id DESC LIMIT $limit_val")->fetchAll(PDO::FETCH_ASSOC);
 } else {
     $current_user_id = intval($_SESSION['user_id'] ?? 0);
-    $income_records = $pdo->query("SELECT f.*, h.name as head_name FROM finance f LEFT JOIN heads h ON f.head_id = h.id WHERE f.type = 'Income' AND (f.system_type = '$sys' OR f.system_type IS NULL OR f.system_type = '') AND f.is_deleted = 0 AND f.user_id = $current_user_id ORDER BY f.date DESC, f.id DESC LIMIT $limit_val")->fetchAll(PDO::FETCH_ASSOC);
-    $expense_records = $pdo->query("SELECT f.*, h.name as head_name FROM finance f LEFT JOIN heads h ON f.head_id = h.id WHERE f.type = 'Expense' AND (f.system_type = '$sys' OR f.system_type IS NULL OR f.system_type = '') AND f.is_deleted = 0 AND f.user_id = $current_user_id ORDER BY f.date DESC, f.id DESC LIMIT $limit_val")->fetchAll(PDO::FETCH_ASSOC);
+    $records = $pdo->query("SELECT f.*, h.name as head_name FROM finance f LEFT JOIN heads h ON f.head_id = h.id WHERE f.is_deleted = 0 AND f.user_id = $current_user_id ORDER BY f.date DESC, f.id DESC LIMIT $limit_val")->fetchAll(PDO::FETCH_ASSOC);
 }
 
-$title = ($sys === 'Masjid') ? "آمدن و اخراجات (مسجد)" : "آمدن و اخراجات (مدرسہ)";
+$title = "Simple Finance";
 include 'header.php';
 ?>
 
-<div class="container-fluid py-3">
-    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
-        <h3 class="fw-bold text-primary mb-0">
-            <i class="fas fa-coins me-2"></i> 
-            <?php echo ($sys === 'Masjid') ? 'سادہ آمدن و اخراجات (مسجد)' : 'سادہ آمدن و اخراجات (مدرسہ)'; ?>
-        </h3>
-        <div class="d-flex gap-2">
-            <a href="simple_finance.php?sync_heads=1" class="btn btn-outline-success fw-bold">
-                <i class="fas fa-sync me-1"></i> مدات سنک کریں (Sync Heads)
-            </a>
-            <a href="finance_report.php" class="btn btn-outline-primary fw-bold">
-                <i class="fas fa-chart-bar me-1"></i> فنانس رپورٹ
-            </a>
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 class="fw-bold text-primary"><i class="fas fa-coins me-2"></i> سادہ آمدن و اخراجات</h3>
+        <div>
+            <a href="finance_report.php" class="btn btn-outline-primary"><i class="fas fa-chart-bar me-1"></i> فنانس رپورٹ</a>
         </div>
     </div>
 
     <?php if(isset($_GET['msg'])): ?>
-    <div class="alert alert-success alert-dismissible fade show" role="alert">
-        ✅ کارروائی کامیابی سے مکمل ہو گئی۔
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-    </div>
+    <div class="alert alert-success">✅ کارروائی کامیابی سے مکمل ہو گئی۔</div>
     <?php endif; ?>
 
-    <div class="row g-4">
-        <!-- COLUMN 1: INCOME SECTION (آمدن اندراج فارم اور ہسٹری) -->
-        <div class="col-lg-6">
-            <!-- آمدن اندراج فارم -->
+    <div class="row">
+        <!-- Add Record Form -->
+        <div class="col-md-4">
             <div class="card shadow-sm border-0 neobox mb-4">
-                <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0 fw-bold text-white" style="color: #ffffff !important;"><i class="fas fa-arrow-down me-2 text-white"></i> آمدن اندراج (Income Entry)</h5>
-                    <span class="badge bg-light text-success fw-bold">آمدن</span>
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0 fw-bold"><i class="fas fa-plus-circle me-2"></i> نیا ریکارڈ درج کریں</h5>
                 </div>
                 <div class="card-body">
                     <form method="POST">
-                        <input type="hidden" name="type" value="Income">
+                        <div class="mb-3">
+                            <label class="fw-bold">قسم (Type)</label>
+                            <select name="type" class="form-select" id="record_type" onchange="onTypeChange()" required>
+                                <option value="Income">آمدن (Income)</option>
+                                <option value="Expense">اخراجات (Expense)</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="fw-bold">تاریخ</label>
+                            <input type="date" name="date" class="form-control" value="<?php echo date('Y-m-d'); ?>" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="fw-bold">مد (Head)</label>
+                            <div class="input-group">
+                                <select name="head_id" class="form-select" id="head_id" required>
+                                    <option value="">مد منتخب کریں</option>
+                                    <?php foreach($heads as $h): ?>
+                                        <option value="<?php echo $h['id']; ?>" data-type="<?php echo htmlspecialchars($h['type'] ?? ''); ?>"><?php echo htmlspecialchars($h['name']); ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#addHeadModal" title="نئی مد شامل کریں">
+                                    <i class="fas fa-plus"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="fw-bold">رقم (Amount)</label>
+                            <input type="number" name="amount" class="form-control" required>
+                        </div>
                         
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <label class="fw-bold form-label">تاریخ</label>
-                                <input type="date" name="date" class="form-control" value="<?php echo date('Y-m-d'); ?>" required>
+                        <div id="donor_fields">
+                            <div class="mb-3">
+                                <label class="fw-bold">دینے والے کا نام</label>
+                                <input type="text" name="donor_name" class="form-control">
                             </div>
-                            <div class="col-md-6">
-                                <label class="fw-bold form-label">مد (Income Head)</label>
-                                <div class="input-group">
-                                    <select name="head_id" class="form-select" required>
-                                        <option value="">آمدن مد منتخب کریں</option>
-                                        <?php foreach($income_heads as $h): ?>
-                                            <option value="<?php echo $h['id']; ?>"><?php echo htmlspecialchars($h['name']); ?></option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                    <button type="button" class="btn btn-outline-success" data-bs-toggle="modal" data-bs-target="#addHeadModal" onclick="setHeadTypeModal('Income')" title="نئی مد">
-                                        <i class="fas fa-plus"></i>
-                                    </button>
-                                </div>
+                            <div class="mb-3">
+                                <label class="fw-bold">پتہ (Address)</label>
+                                <input type="text" name="donor_address" class="form-control">
+                            </div>
+                            <div class="mb-3">
+                                <label class="fw-bold">دستی رسید نمبر (Manual Receipt No)</label>
+                                <input type="text" name="manual_receipt_no" class="form-control">
                             </div>
                         </div>
 
-                        <div class="row g-3 mt-1">
-                            <div class="col-md-6">
-                                <label class="fw-bold form-label">رقم (Rs.)</label>
-                                <input type="number" step="0.01" name="amount" class="form-control" placeholder="مثلاً: 5000" required>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="fw-bold form-label">دینے والے کا نام (Donor)</label>
-                                <input type="text" name="donor_name" class="form-control" placeholder="مثلاً: احمد علی">
-                            </div>
+                        <div class="mb-3">
+                            <label class="fw-bold">تفصیل (Description)</label>
+                            <textarea name="description" class="form-control" rows="2"></textarea>
                         </div>
 
-                        <div class="row g-3 mt-1">
-                            <div class="col-md-6">
-                                <label class="fw-bold form-label">دستی رسید نمبر (Manual Receipt)</label>
-                                <input type="text" name="manual_receipt_no" class="form-control" placeholder="اختياری">
-                            </div>
-                            <div class="col-md-6">
-                                <label class="fw-bold form-label">پتہ (Address)</label>
-                                <input type="text" name="donor_address" class="form-control" placeholder="اختياری">
-                            </div>
-                        </div>
-
-                        <div class="mt-3">
-                            <label class="fw-bold form-label">تفصیل (Description)</label>
-                            <textarea name="description" class="form-control" rows="2" placeholder="تفصیل لکھیے۔۔۔"></textarea>
-                        </div>
-
-                        <button type="submit" name="add_record" class="btn btn-success w-100 fw-bold mt-3">
-                            <i class="fas fa-save me-1"></i> آمدن ریکارڈ محفوظ کریں
-                        </button>
+                        <button type="submit" name="add_record" class="btn btn-primary w-100 fw-bold"><i class="fas fa-save me-1"></i> ریکارڈ محفوظ کریں</button>
                     </form>
                 </div>
             </div>
+        </div>
 
-            <!-- آمدن انٹریز ہسٹری -->
+        <!-- Recent Records -->
+        <div class="col-md-8">
             <div class="card shadow-sm border-0 neobox">
-                <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0 fw-bold text-white" style="color: #ffffff !important;"><i class="fas fa-list me-2 text-white"></i> آمدن انٹریز ہسٹری (کل: <?php echo count($income_records); ?>)</h5>
-                    <input type="text" id="searchIncome" class="form-control form-control-sm w-auto" placeholder="تلاش..." onkeyup="filterTable('incomeTable', 'searchIncome')">
+                <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <h5 class="mb-0 fw-bold"><i class="fas fa-list me-2"></i> تمام ریکارڈز (کل: <?php echo count($records); ?>)</h5>
+                    <input type="text" id="searchFinance" class="form-control form-control-sm w-auto" placeholder="تلاش کریں (Search)..." onkeyup="filterFinanceTable()">
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
-                        <table class="table table-hover align-middle mb-0 text-center" id="incomeTable">
+                        <table class="table table-hover align-middle mb-0 text-center" id="financeTable">
                             <thead class="table-light">
                                 <tr>
                                     <th>تاریخ</th>
+                                    <th>قسم</th>
                                     <th>مد</th>
                                     <th>رقم</th>
                                     <th>تفصیل / نام</th>
@@ -234,123 +182,35 @@ include 'header.php';
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php foreach($income_records as $r): ?>
+                                <?php foreach($records as $r): ?>
                                 <tr>
-                                    <td><small class="fw-bold"><?php echo date('d-M-Y', strtotime($r['date'])); ?></small></td>
-                                    <td class="fw-bold text-success"><?php echo htmlspecialchars($r['head_name'] ?: '---'); ?></td>
-                                    <td class="fw-bold text-success">Rs. <?php echo number_format($r['amount']); ?></td>
+                                    <td><?php echo date('d-M-Y', strtotime($r['date'])); ?></td>
+                                    <td>
+                                        <?php if($r['type'] == 'Income'): ?>
+                                            <span class="badge bg-success">آمدن</span>
+                                        <?php else: ?>
+                                            <span class="badge bg-danger">خرچ</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td class="fw-bold"><?php echo htmlspecialchars($r['head_name'] ?: '---'); ?></td>
+                                    <td class="fw-bold">Rs. <?php echo number_format($r['amount']); ?></td>
                                     <td class="small text-start">
-                                        <?php if(!empty($r['donor_name'])): ?>
+                                        <?php if($r['type'] == 'Income' && !empty($r['donor_name'])): ?>
                                             <span class="text-primary fw-bold"><?php echo htmlspecialchars($r['donor_name']); ?></span><br>
                                         <?php endif; ?>
                                         <span class="text-muted"><?php echo htmlspecialchars($r['description']); ?></span>
                                     </td>
                                     <td>
-                                        <div class="btn-group btn-group-sm">
-                                            <a href="print_masjid_receipt.php?id=<?php echo $r['id']; ?>" class="btn btn-outline-primary" target="_blank" title="رسید پرنٹ"><i class="fas fa-print"></i></a>
-                                            <a href="edit_finance.php?id=<?php echo $r['id']; ?>" class="btn btn-outline-warning" title="ترمیم"><i class="fas fa-edit"></i></a>
-                                            <a href="?del_id=<?php echo $r['id']; ?>" class="btn btn-outline-danger" onclick="return confirm('کیا واقعی یہ ریکارڈ ڈیلیٹ کرنا چاہتے ہیں؟')" title="ڈیلیٹ"><i class="fas fa-trash"></i></a>
-                                        </div>
+                                        <?php if($r['type'] == 'Income'): ?>
+                                            <a href="print_receipt.php?id=<?php echo $r['id']; ?>" class="btn btn-sm btn-outline-primary" target="_blank" title="رسید پرنٹ کریں"><i class="fas fa-print"></i></a>
+                                        <?php endif; ?>
+                                        <a href="edit_finance.php?id=<?php echo $r['id']; ?>" class="btn btn-sm btn-outline-warning me-1" title="ترمیم (Edit)"><i class="fas fa-edit"></i></a>
+                                        <a href="?del_id=<?php echo $r['id']; ?>" class="btn btn-sm btn-outline-danger" onclick="return confirm('کیا واقعی حذف کرنا چاہتے ہیں؟')" title="ڈیلیٹ"><i class="fas fa-trash"></i></a>
                                     </td>
                                 </tr>
                                 <?php endforeach; ?>
-                                <?php if(count($income_records) == 0): ?>
-                                <tr><td colspan="5" class="text-center p-4 text-muted">کوئی آمدن ریکارڈ موجود نہیں</td></tr>
-                                <?php endif; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- COLUMN 2: EXPENSE SECTION (خرچ اندراج فارم اور ہسٹری) -->
-        <div class="col-lg-6">
-            <!-- خرچ اندراج فارم -->
-            <div class="card shadow-sm border-0 neobox mb-4">
-                <div class="card-header bg-danger text-white d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0 fw-bold text-white" style="color: #ffffff !important;"><i class="fas fa-arrow-up me-2 text-white"></i> خرچ اندراج (Expense Entry)</h5>
-                    <span class="badge bg-light text-danger fw-bold">اخراجات</span>
-                </div>
-                <div class="card-body">
-                    <form method="POST">
-                        <input type="hidden" name="type" value="Expense">
-                        
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <label class="fw-bold form-label">تاریخ</label>
-                                <input type="date" name="date" class="form-control" value="<?php echo date('Y-m-d'); ?>" required>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="fw-bold form-label">مد (Expense Head)</label>
-                                <div class="input-group">
-                                    <select name="head_id" class="form-select" required>
-                                        <option value="">اخراجات مد منتخب کریں</option>
-                                        <?php foreach($expense_heads as $h): ?>
-                                            <option value="<?php echo $h['id']; ?>"><?php echo htmlspecialchars($h['name']); ?></option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                    <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#addHeadModal" onclick="setHeadTypeModal('Expense')" title="نئی مد">
-                                        <i class="fas fa-plus"></i>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="row g-3 mt-1">
-                            <div class="col-md-12">
-                                <label class="fw-bold form-label">رقم (Rs.)</label>
-                                <input type="number" step="0.01" name="amount" class="form-control" placeholder="مثلاً: 2500" required>
-                            </div>
-                        </div>
-
-                        <div class="mt-3">
-                            <label class="fw-bold form-label">تفصیل (Description)</label>
-                            <textarea name="description" class="form-control" rows="4" placeholder="اخراجات کی تفصیل لکھیے۔۔۔"></textarea>
-                        </div>
-
-                        <button type="submit" name="add_record" class="btn btn-danger w-100 fw-bold mt-3">
-                            <i class="fas fa-save me-1"></i> خرچ ریکارڈ محفوظ کریں
-                        </button>
-                    </form>
-                </div>
-            </div>
-
-            <!-- خرچ انٹریز ہسٹری -->
-            <div class="card shadow-sm border-0 neobox">
-                <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0 fw-bold text-white" style="color: #ffffff !important;"><i class="fas fa-list me-2 text-white"></i> خرچ انٹریز ہسٹری (کل: <?php echo count($expense_records); ?>)</h5>
-                    <input type="text" id="searchExpense" class="form-control form-control-sm w-auto" placeholder="تلاش..." onkeyup="filterTable('expenseTable', 'searchExpense')">
-                </div>
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-hover align-middle mb-0 text-center" id="expenseTable">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>تاریخ</th>
-                                    <th>مد</th>
-                                    <th>رقم</th>
-                                    <th>تفصیل</th>
-                                    <th>ایکشن</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach($expense_records as $r): ?>
-                                <tr>
-                                    <td><small class="fw-bold"><?php echo date('d-M-Y', strtotime($r['date'])); ?></small></td>
-                                    <td class="fw-bold text-danger"><?php echo htmlspecialchars($r['head_name'] ?: '---'); ?></td>
-                                    <td class="fw-bold text-danger">Rs. <?php echo number_format($r['amount']); ?></td>
-                                    <td class="small text-start text-muted"><?php echo htmlspecialchars($r['description']); ?></td>
-                                    <td>
-                                        <div class="btn-group btn-group-sm">
-                                            <a href="edit_finance.php?id=<?php echo $r['id']; ?>" class="btn btn-outline-warning" title="ترمیم"><i class="fas fa-edit"></i></a>
-                                            <a href="?del_id=<?php echo $r['id']; ?>" class="btn btn-outline-danger" onclick="return confirm('کیا واقعی یہ ریکارڈ ڈیلیٹ کرنا چاہتے ہیں؟')" title="ڈیلیٹ"><i class="fas fa-trash"></i></a>
-                                        </div>
-                                    </td>
-                                </tr>
-                                <?php endforeach; ?>
-                                <?php if(count($expense_records) == 0): ?>
-                                <tr><td colspan="5" class="text-center p-4 text-muted">کوئی خرچ ریکارڈ موجود نہیں</td></tr>
+                                <?php if(count($records) == 0): ?>
+                                <tr><td colspan="6" class="text-center p-4">کوئی ریکارڈ موجود نہیں</td></tr>
                                 <?php endif; ?>
                             </tbody>
                         </table>
@@ -367,25 +227,25 @@ include 'header.php';
         <div class="modal-content">
             <form method="POST">
                 <div class="modal-header bg-primary text-white">
-                    <h5 class="modal-title">نئی مد (Head) شامل کریں</h5>
+                    <h5 class="modal-title">نئی مد شامل کریں</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
                     <div class="mb-3">
-                        <label class="fw-bold form-label">مد کا نام</label>
-                        <input type="text" name="head_name" class="form-control" placeholder="مثلاً: بجلی کا بل، عطیات، راشن" required>
+                        <label class="fw-bold">مد کا نام</label>
+                        <input type="text" name="head_name" class="form-control" required>
                     </div>
                     <div class="mb-3">
-                        <label class="fw-bold form-label">قسم (Type)</label>
+                        <label class="fw-bold">قسم</label>
                         <select name="head_type" class="form-select" id="modal_head_type" required>
-                            <option value="Income">آمدن (Income)</option>
-                            <option value="Expense">اخراجات (Expense)</option>
+                            <option value="Income">آمدن</option>
+                            <option value="Expense">خرچ</option>
                         </select>
                     </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">منسوخ</button>
-                    <button type="submit" name="add_head" class="btn btn-primary fw-bold">محفوظ کریں</button>
+                    <button type="submit" name="add_head" class="btn btn-primary">محفوظ کریں</button>
                 </div>
             </form>
         </div>
@@ -393,15 +253,78 @@ include 'header.php';
 </div>
 
 <script>
-function setHeadTypeModal(type) {
-    var modalType = document.getElementById('modal_head_type');
-    if (modalType) modalType.value = type;
+function toggleDonor() {
+    var type = document.getElementById('record_type').value;
+    if(type === 'Income') {
+        document.getElementById('donor_fields').style.display = 'block';
+    } else {
+        document.getElementById('donor_fields').style.display = 'none';
+    }
 }
 
-function filterTable(tableId, inputId) {
-    var input = document.getElementById(inputId);
+function filterHeads() {
+    var type = document.getElementById('record_type').value;
+    var headSelect = document.getElementById('head_id');
+    var options = headSelect.options;
+    
+    var currentSelected = headSelect.value;
+    var anySelected = false;
+    
+    for (var i = 0; i < options.length; i++) {
+        var opt = options[i];
+        if (opt.value === "") {
+            opt.hidden = false;
+            opt.disabled = false;
+            opt.style.display = '';
+            continue;
+        }
+        var optType = (opt.getAttribute('data-type') || '').toLowerCase();
+        var selectedType = (type || '').toLowerCase();
+        if (optType === selectedType) {
+            opt.hidden = false;
+            opt.disabled = false;
+            opt.style.display = '';
+            if (opt.value === currentSelected) {
+                anySelected = true;
+            }
+        } else {
+            opt.hidden = true;
+            opt.disabled = true;
+            opt.style.display = 'none';
+        }
+    }
+    
+    if (!anySelected) {
+        headSelect.value = "";
+    }
+}
+
+function onTypeChange() {
+    toggleDonor();
+    filterHeads();
+    var modalType = document.getElementById('modal_head_type');
+    var recordType = document.getElementById('record_type');
+    if (modalType && recordType) modalType.value = recordType.value;
+}
+
+// Run on load
+document.addEventListener('DOMContentLoaded', function() {
+    toggleDonor();
+    filterHeads();
+    var addHeadModal = document.getElementById('addHeadModal');
+    if (addHeadModal) {
+        addHeadModal.addEventListener('show.bs.modal', function () {
+            var modalType = document.getElementById('modal_head_type');
+            var recordType = document.getElementById('record_type');
+            if (modalType && recordType) modalType.value = recordType.value;
+        });
+    }
+});
+
+function filterFinanceTable() {
+    var input = document.getElementById("searchFinance");
     var filter = input.value.toLowerCase();
-    var table = document.getElementById(tableId);
+    var table = document.getElementById("financeTable");
     if (!table) return;
     var tr = table.getElementsByTagName("tr");
     for (var i = 1; i < tr.length; i++) {

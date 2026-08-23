@@ -27,8 +27,8 @@ if (empty($start_date) || empty($end_date)) {
 }
 
 $selected_student_id = isset($_GET['student_id']) && $_GET['student_id'] !== '' ? (int)$_GET['student_id'] : 0;
-$students_stmt = $pdo->prepare("SELECT id, name, admission_number FROM students WHERE class = ? AND (is_deleted = 0 OR is_deleted IS NULL) ORDER BY name ASC");
-$students_stmt->execute([$selected_class]);
+$students_stmt = $pdo->prepare("SELECT id, name, admission_number FROM students WHERE (class = ? OR class_name = ?) AND (is_deleted = 0 OR is_deleted IS NULL) ORDER BY name ASC");
+$students_stmt->execute([$selected_class, $selected_class]);
 $filter_students = $students_stmt->fetchAll(PDO::FETCH_ASSOC);
 
 function translateDateUrduFull($dateStr) {
@@ -186,102 +186,17 @@ function translateDateUrduFull($dateStr) {
         $ar_stmt->execute($ar_params);
         $ar_rows = $ar_stmt->fetchAll();
 
-        // Fetch attendance map for status links
-        try {
-            $att_stmt = $pdo->query("SELECT date, student_id, status, status_1, status_2, status_3, status_4 FROM attendance");
-            $att_rows = $att_stmt->fetchAll(PDO::FETCH_ASSOC);
-        } catch (PDOException $e) {
-            $att_rows = [];
-        }
-        $att_map = [];
-        foreach ($att_rows as $a) {
-            $dt = trim($a['date'] ?? '');
-            $sid = (int)($a['student_id'] ?? 0);
-            $st = strtoupper(trim(($a['status'] ?? '') . ' ' . ($a['status_1'] ?? '') . ' ' . ($a['status_2'] ?? '') . ' ' . ($a['status_3'] ?? '') . ' ' . ($a['status_4'] ?? '')));
-            
-            $tokens = preg_split('/\s+/', $st);
-            $val = 'P';
-            if (strpos($st, 'ABSENT') !== false || strpos($st, 'غیر حاضر') !== false || strpos($st, 'غائب') !== false || in_array('A', $tokens, true) || in_array('غ', $tokens, true)) {
-                $val = 'A';
-            } elseif (strpos($st, 'LEAVE') !== false || strpos($st, 'رخصت') !== false || in_array('L', $tokens, true) || in_array('ر', $tokens, true)) {
-                $val = 'L';
-            }
-            $att_map["{$dt}_{$sid}"] = $val;
-            
-            $dNorm = '';
-            if (preg_match('/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/', $dt, $m)) {
-                $dNorm = sprintf('%04d-%02d-%02d', $m[1], $m[2], $m[3]);
-            } elseif (preg_match('/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/', $dt, $m)) {
-                $dNorm = sprintf('%04d-%02d-%02d', $m[3], $m[2], $m[1]);
-            }
-            if ($dNorm) {
-                $att_map["{$dNorm}_{$sid}"] = $val;
-            }
-        }
-
-        $recited_cnt = 0;
-        $naagha_cnt = 0;
-        $absent_cnt = 0;
-        $leave_cnt = 0;
-
-        foreach ($ar_rows as $row) {
-            $dt = $row['date'] ?? '';
-            $sid = $row['student_id'] ?? '';
-            $att = $att_map["{$dt}_{$sid}"] ?? 'P';
-            if ($att === 'A') {
-                $absent_cnt++;
-            } elseif ($att === 'L') {
-                $leave_cnt++;
-            } else {
-                $grd = $row['grade'] ?? $row['lesson_details'] ?? '';
-                if (strpos($grd, 'ناغہ') !== false || empty($grd) || $grd === '-') {
-                    $naagha_cnt++;
-                } else {
-                    $recited_cnt++;
-                }
-            }
-        }
-
         if (count($ar_rows) > 0):
         ?>
-        <!-- Summary Cards -->
-        <div class="row g-2 text-center mb-3">
-            <div class="col-3">
-                <div class="p-2 border rounded bg-light">
-                    <div class="fw-bold text-success fs-5"><?= $recited_cnt ?></div>
-                    <div class="small fw-bold text-muted">سنانے والے طلبہ</div>
-                </div>
-            </div>
-            <div class="col-3">
-                <div class="p-2 border rounded bg-light">
-                    <div class="fw-bold text-danger fs-5"><?= $naagha_cnt ?></div>
-                    <div class="small fw-bold text-muted">ناغہ کرنے والے</div>
-                </div>
-            </div>
-            <div class="col-3">
-                <div class="p-2 border rounded bg-light">
-                    <div class="fw-bold text-danger fs-5" style="color: #990000 !important;"><?= $absent_cnt ?></div>
-                    <div class="small fw-bold text-muted">غیر حاضر طلبہ</div>
-                </div>
-            </div>
-            <div class="col-3">
-                <div class="p-2 border rounded bg-light">
-                    <div class="fw-bold text-warning fs-5" style="color: #d97706 !important;"><?= $leave_cnt ?></div>
-                    <div class="small fw-bold text-muted">رخصت طلبہ</div>
-                </div>
-            </div>
-        </div>
-
         <div class="table-responsive-no-scroll">
             <table class="table table-bordered border-dark text-center align-middle report-table">
                 <thead class="table-dark">
                     <tr>
-                        <th style="width: 20%;"><?php echo t('student'); ?></th>
-                        <th style="width: 12%;">حاضری</th>
-                        <th style="width: 13%;">کلاس</th>
+                        <th style="width: 22%;"><?php echo t('student'); ?></th>
+                        <th style="width: 15%;">کلاس</th>
                         <th style="width: 20%;"><?php echo t('subject'); ?> / کتاب</th>
-                        <th style="width: 23%;">تفصیل <?php echo t('sabaq'); ?></th>
-                        <th style="width: 12%;">کیفیت / درجہ</th>
+                        <th style="width: 28%;">تفصیل <?php echo t('sabaq'); ?></th>
+                        <th style="width: 15%;">کیفیت / درجہ</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -290,35 +205,16 @@ function translateDateUrduFull($dateStr) {
                     foreach($ar_rows as $row) {
                         if ($current_date !== $row['date']) {
                             $current_date = $row['date'];
-                            echo "<tr class='table-secondary'><td colspan='6' class='fw-bold py-2 text-center border-dark'>تاریخ: ".translateDateUrduFull($current_date)."</td></tr>";
+                            echo "<tr class='table-secondary'><td colspan='5' class='fw-bold py-2 text-center border-dark'>تاریخ: ".translateDateUrduFull($current_date)."</td></tr>";
                         }
                         $grade = $row['grade'] ?? '';
                         $c = ($grade == 'کمزور' || $grade == 'Weak') ? 'danger' : (($grade == 'بہترین' || $grade == 'Excellent') ? 'success' : 'primary');
-                        
-                        $dt = $row['date'] ?? '';
-                        $sid = $row['student_id'] ?? '';
-                        $att_val = $att_map["{$dt}_{$sid}"] ?? 'P';
-                        $att_badge = "<span class='badge bg-success'>حاضر</span>";
-                        $lesson_det = htmlspecialchars($row['lesson_details'] ?? '');
-                        $grade_det = htmlspecialchars($row['grade'] ?? '');
-
-                        if ($att_val === 'A') {
-                            $att_badge = "<span class='badge bg-danger'>غیر حاضر</span>";
-                            if (empty($lesson_det) || $lesson_det === '-') $lesson_det = "<span class='badge bg-danger'>غیر حاضر</span>";
-                            if (empty($grade_det) || $grade_det === '-') $grade_det = "<span class='badge bg-danger'>غیر حاضر</span>";
-                        } elseif ($att_val === 'L') {
-                            $att_badge = "<span class='badge bg-warning text-dark'>رخصت</span>";
-                            if (empty($lesson_det) || $lesson_det === '-') $lesson_det = "<span class='badge bg-warning text-dark'>رخصت</span>";
-                            if (empty($grade_det) || $grade_det === '-') $grade_det = "<span class='badge bg-warning text-dark'>رخصت</span>";
-                        }
-
                         echo "<tr>
                             <td class='fw-bold text-start ps-2'>{$row['student_name']} <small class='text-muted'>({$row['admission_number']})</small></td>
-                            <td>{$att_badge}</td>
                             <td>{$row['class_name']}</td>
                             <td class='fw-bold'>{$row['subject']}</td>
-                            <td class='text-start ps-2'>{$lesson_det}</td>
-                            <td class='fw-bold text-$c'>{$grade_det}</td>
+                            <td class='text-start ps-2'>{$row['lesson_details']}</td>
+                            <td class='fw-bold text-$c'>{$row['grade']}</td>
                         </tr>";
                     }
                     ?>
@@ -436,5 +332,3 @@ function applyPeriodDates(val) {
 </script>
 
 <?php include 'footer.php'; ?>
-
-

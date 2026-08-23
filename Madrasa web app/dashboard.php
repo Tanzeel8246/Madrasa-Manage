@@ -1,74 +1,68 @@
-﻿<?php
-require_once 'includes/db.php';
-require_once 'includes/functions.php';
+<?php require_once 'db.php'; include 'header.php'; 
 
-if (!is_logged_in()) {
-    header('Location: login.php');
-    exit;
-}
+$settings = $pdo->query("SELECT * FROM settings WHERE id=1")->fetch();
 
-\ = \['role'] ?? 'parent';
-\ = \['system_type'] ?? 'Madrasa';
+$role = $_SESSION['role'] ?? 'parent';
 
-if (in_array(\, ['admin', 'nazim', 'teacher'], true)) {
+if (in_array($role, ['admin', 'nazim', 'teacher'], true)) {
     try {
         // صرف فعال اور غیر ڈیلیٹ شدہ طلباء گنیں
-        \ = \->query("SELECT COUNT(*) FROM students WHERE is_deleted=0 AND system_type='\' AND (status='Active' OR status='' OR status IS NULL)")->fetchColumn();
-        \   = \->query("SELECT COUNT(*) FROM students WHERE is_deleted=0 AND system_type='\' AND status='Alumni'")->fetchColumn();
-        \ = \->query("SELECT COUNT(*) FROM teachers WHERE is_deleted=0 AND system_type='\' AND (status='Active' OR status='' OR status IS NULL)")->fetchColumn();
-        \  = \->query("SELECT COUNT(*) FROM notices WHERE is_deleted=0")->fetchColumn();
-        \  = \->query("SELECT COUNT(*) FROM classes WHERE system_type='\' AND (status='Active' OR status='' OR status IS NULL)")->fetchColumn();
+        $total_students = $pdo->query("SELECT COUNT(*) FROM students WHERE is_deleted=0 AND (status='Active' OR status='' OR status IS NULL)")->fetchColumn();
+        $total_alumni   = $pdo->query("SELECT COUNT(*) FROM students WHERE is_deleted=0 AND status='Alumni'")->fetchColumn();
+        $total_teachers = $pdo->query("SELECT COUNT(*) FROM teachers WHERE is_deleted=0 AND (status='Active' OR status='' OR status IS NULL)")->fetchColumn();
+        $total_notices  = $pdo->query("SELECT COUNT(*) FROM notices WHERE is_deleted=0")->fetchColumn();
+        $total_classes  = $pdo->query("SELECT COUNT(*) FROM classes WHERE status='Active' OR status='' OR status IS NULL")->fetchColumn();
         
-        \ = date('Y-m-d');
+        $today = date('Y-m-d');
         // آج کی حاضری: حاضر، غیر حاضر، رخصت، تاخیر فیصد
-        \ = \->query("
+        $today_rows = $pdo->query("
             SELECT status_1, status_2, status_3, status_4, late_1, late_2, late_3, late_4
             FROM attendance
-            WHERE date = '\' AND is_deleted=0 AND system_type='\'
+            WHERE date = '$today' AND is_deleted=0
         ")->fetchAll(PDO::FETCH_ASSOC);
-        \ = 0; \ = 0; \ = 0; \ = 0; \ = 0;
-        foreach (\ as \) {
-            for (\ = 1; \ <= 4; \++) {
-                \ = strtoupper(trim((string)(\["status_\"] ?? '')));
-                if (\ === '') continue;
-                \++;
-                \ = (int)(\["late_\"] ?? 0);
-                if (\ > 0 || \ === 'LATE') {
-                    \++;
-                } elseif (\ === 'A' || \ === 'ABSENT') {
-                    \++;
-                } elseif (\ === 'L' || \ === 'LEAVE' || \ === 'R') {
-                    \++;
-                } elseif (\ === 'P' || \ === 'PRESENT') {
-                    \++;
+        $today_present = 0; $today_absent = 0; $today_leave = 0; $today_late = 0; $today_total = 0;
+        foreach ($today_rows as $att_row) {
+            for ($i = 1; $i <= 4; $i++) {
+                $status = strtoupper(trim((string)($att_row["status_$i"] ?? '')));
+                if ($status === '') continue;
+                $today_total++;
+                $late_minutes = (int)($att_row["late_$i"] ?? 0);
+                if ($late_minutes > 0 || $status === 'LATE') {
+                    $today_late++;
+                } elseif ($status === 'A' || $status === 'ABSENT') {
+                    $today_absent++;
+                } elseif ($status === 'L' || $status === 'LEAVE' || $status === 'R') {
+                    $today_leave++;
+                } elseif ($status === 'P' || $status === 'PRESENT') {
+                    $today_present++;
                 }
             }
         }
-        \ = function(\) use (\) {
-            return \ > 0 ? round((\ / \) * 100) : 0;
+        $pct = function($value) use ($today_total) {
+            return $today_total > 0 ? round(($value / $today_total) * 100) : 0;
         };
-        \ = \(\);
-        \ = \(\);
-        \ = \(\);
-        \ = \(\);
+        $present_today_pct = $pct($today_present);
+        $absent_today_pct = $pct($today_absent);
+        $leave_today_pct = $pct($today_leave);
+        $late_today_pct = $pct($today_late);
         
         // Monthly Attendance
-        \ = date('Y-m-01');
-        \ = \->query("SELECT COUNT(*) FROM attendance WHERE date >= '\' AND is_deleted=0 AND system_type='\'")->fetchColumn();
-        \  = \->query("
+        $first_day = date('Y-m-01');
+        $total_possible = $pdo->query("SELECT COUNT(*) FROM attendance WHERE date >= '$first_day' AND is_deleted=0")->fetchColumn();
+        $total_present  = $pdo->query("
             SELECT COUNT(*) FROM attendance 
-            WHERE date >= '\' AND is_deleted=0 AND system_type='\'
+            WHERE date >= '$first_day' AND is_deleted=0
               AND (status_1='P' OR status_2='P' OR status_3='P' OR status_4='P')
         ")->fetchColumn();
-        \ = \ > 0 ? round((\ / \) * 100, 1) : 0;
+        $monthly_att_percent = $total_possible > 0 ? round(($total_present / $total_possible) * 100, 1) : 0;
 
-        \ = "رپورٹ تیار کی جا رہی ہے...";
+        $management_insight = "رپورٹ تیار کی جا رہی ہے...";
 
         // رواں ماہ کے اخراجات
-        \ = \->query("SELECT SUM(amount) FROM finance WHERE LOWER(type)='expense' AND is_deleted=0 AND date >= '\' AND system_type='\'")->fetchColumn();
-        \ = (float)(\ ?? 0);
+        $current_month_expense = $pdo->query("SELECT SUM(amount) FROM finance WHERE LOWER(type)='expense' AND is_deleted=0 AND date >= '$first_day'")->fetchColumn();
+        $monthly_expense = (float)($current_month_expense ?? 0);
 
-    } catch (PDOException \) { 
+    } catch (PDOException $e) { 
         // ایرر لاگ کریں تاکہ debugging آسان ہو
         error_log("Dashboard PDO Error: " . $e->getMessage());
         $total_students=0; $total_alumni=0; $total_teachers=0; $present_today_pct=0; $absent_today_pct=0; $leave_today_pct=0; $late_today_pct=0; 

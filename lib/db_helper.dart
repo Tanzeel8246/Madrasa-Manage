@@ -20,7 +20,7 @@ class DBHelper {
     String path = join(await getDatabasesPath(), 'madrasa.db');
     return await openDatabase(
       path,
-      version: 37,
+      version: 36,
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
           try {
@@ -207,8 +207,7 @@ class DBHelper {
               p5_name TEXT DEFAULT 'Period 5',
               p6_name TEXT DEFAULT 'Period 6',
               subjects_list TEXT,
-              is_synced INTEGER DEFAULT 1,
-              system_type TEXT DEFAULT 'Madrasa'
+              is_synced INTEGER DEFAULT 1
             )
           ''');
           await db.execute('''
@@ -611,31 +610,9 @@ class DBHelper {
               )
             ''');
           } catch (_) {}
-          }
-          if (oldVersion < 37) {
-            try {
-              await db.execute('''
-                CREATE TABLE IF NOT EXISTS masjid_assets(
-                  id INTEGER PRIMARY KEY,
-                  name TEXT,
-                  category TEXT,
-                  quantity INTEGER,
-                  condition TEXT,
-                  condition_status TEXT,
-                  asset_type TEXT,
-                  donor_name TEXT,
-                  donor_father TEXT,
-                  donor_address TEXT,
-                  donor_phone TEXT,
-                  system_type TEXT DEFAULT 'Masjid',
-                  is_synced INTEGER DEFAULT 0,
-                  is_deleted INTEGER DEFAULT 0
-                )
-              ''');
-            } catch (_) {}
-          }
-        },
-        onOpen: (db) async {
+        }
+      },
+      onOpen: (db) async {
         await forceMigrate(db);
       },
       onCreate: (db, version) async {
@@ -921,10 +898,9 @@ class DBHelper {
             p5_name TEXT DEFAULT 'Period 5',
             p6_name TEXT DEFAULT 'Period 6',
             subjects_list TEXT,
-              is_deleted INTEGER DEFAULT 0,
-              is_synced INTEGER DEFAULT 0,
-              system_type TEXT DEFAULT 'Madrasa'
-            )
+            is_deleted INTEGER DEFAULT 0,
+            is_synced INTEGER DEFAULT 0
+          )
         ''');
 
         await db.execute('''
@@ -1031,13 +1007,6 @@ class DBHelper {
     final List<dynamic> args = [];
 
     conditions.add('(is_deleted = 0 OR is_deleted IS NULL)');
-    
-    final sysType = SystemTypeGlobal.currentSystemType.value;
-    if (sysType == 'Masjid') {
-      conditions.add("system_type = 'Masjid'");
-    } else {
-      conditions.add("(system_type = 'Madrasa' OR system_type IS NULL OR system_type = '')");
-    }
 
     // Class filter
     final placeholders = assigned.map((_) => '?').join(',');
@@ -1173,13 +1142,9 @@ class DBHelper {
   Future<List<Map<String, dynamic>>> getStudents() async {
     Database db = await database;
     try {
-      final sysType = SystemTypeGlobal.currentSystemType.value;
-      final sysCond = sysType == 'Masjid'
-          ? "system_type = 'Masjid'"
-          : "(system_type = 'Madrasa' OR system_type IS NULL OR system_type = '')";
       return await db.query('students',
           where:
-              "(status IS NULL OR LOWER(TRIM(status)) IN ('active', '', 'present', 'حاضر')) AND (is_deleted = 0 OR is_deleted IS NULL) AND $sysCond",
+              "(status IS NULL OR LOWER(TRIM(status)) IN ('active', '', 'present', 'حاضر')) AND (is_deleted = 0 OR is_deleted IS NULL)",
           orderBy: 'name ASC');
     } catch (e) {
       // Fallback if column missing during mid-sync/upgrade
@@ -1199,13 +1164,6 @@ class DBHelper {
     final List<dynamic> args = [];
 
     conditions.add("(is_deleted = 0 OR is_deleted IS NULL)");
-
-      final sysType = SystemTypeGlobal.currentSystemType.value;
-      if (sysType == 'Masjid') {
-        conditions.add("system_type = 'Masjid'");
-      } else {
-        conditions.add("(system_type = 'Madrasa' OR system_type IS NULL OR system_type = '')");
-      }
 
     if (status != null) {
       if (status == 'Active') {
@@ -1297,12 +1255,8 @@ class DBHelper {
   Future<List<Map<String, dynamic>>> getTeachers() async {
     Database db = await database;
     try {
-      final sysType = SystemTypeGlobal.currentSystemType.value;
-      final sysCond = sysType == 'Masjid'
-          ? "system_type = 'Masjid'"
-          : "(system_type = 'Madrasa' OR system_type IS NULL OR system_type = '')";
       return await db.query('teachers',
-          where: "(is_deleted = 0 OR is_deleted IS NULL) AND $sysCond");
+          where: "is_deleted = 0 OR is_deleted IS NULL");
     } catch (e) {
       debugPrint("getTeachers error: $e");
       return await db.query('teachers');
@@ -1523,11 +1477,8 @@ class DBHelper {
     Database db = await database;
     final role = (userRole ?? currentUserRole.value)?.toLowerCase() ?? '';
     final targetUserId = userId ?? currentUserId.value;
-    final sysType = SystemTypeGlobal.currentSystemType.value;
-
-    if (sysType == 'Masjid') {
-      return getMasjidFinance(userId: userId, userRole: userRole);
-    }
+    // صرف Madrasa کا ڈیٹا دکھائیں (Masjid کا ڈیٹا الگ masjid_finance ٹیبل میں ہے)
+    const sysType = 'Madrasa';
 
     if (role == 'admin') {
       return await db.query(
@@ -2826,8 +2777,6 @@ class DBHelper {
                 int.tryParse(item['serial_no']?.toString() ?? '0') ?? 0,
             'hijri_year':
                 int.tryParse(item['hijri_year']?.toString() ?? '1447') ?? 1447,
-            'system_type':
-                (item['system_type']?.toString().isNotEmpty == true) ? item['system_type'].toString() : 'Madrasa',
             'is_deleted':
                 int.tryParse(item['is_deleted']?.toString() ?? '0') ?? 0,
             'is_synced': 1,
@@ -2904,9 +2853,6 @@ class DBHelper {
             'photo': item['photo']?.toString() ?? '',
             'assigned_classes': item['assigned_classes']?.toString() ?? '',
             'assigned_periods': item['assigned_periods']?.toString() ?? '',
-            'system_type': (item['system_type']?.toString().isNotEmpty == true)
-                ? item['system_type'].toString()
-                : 'Madrasa',
             'is_deleted':
                 int.tryParse(item['is_deleted']?.toString() ?? '0') ?? 0,
             'is_synced': 1,
@@ -3380,11 +3326,10 @@ class DBHelper {
             'p5_name': item['p5_name']?.toString() ?? 'Period 5',
             'p6_name': item['p6_name']?.toString() ?? 'Period 6',
             'subjects_list': item['subjects_list']?.toString() ?? '',
-              'is_deleted':
-                  int.tryParse(item['is_deleted']?.toString() ?? '0') ?? 0,
-              'is_synced': 1,
-              'system_type': item['system_type']?.toString() ?? 'Madrasa',
-            });
+            'is_deleted':
+                int.tryParse(item['is_deleted']?.toString() ?? '0') ?? 0,
+            'is_synced': 1,
+          });
         }
       } catch (e) {
         debugPrint("Sync Error (classes): $e");
@@ -3555,36 +3500,6 @@ class DBHelper {
       }
     }
 
-    if (data['masjid_assets'] != null) {
-      try {
-        batch.delete('masjid_assets', where: 'is_synced = ?', whereArgs: [1]);
-        for (var item in data['masjid_assets']) {
-          batch.insert(
-            'masjid_assets',
-            {
-              'id': item['id'],
-              'name': item['name']?.toString() ?? '',
-              'category': item['category']?.toString() ?? '',
-              'quantity': int.tryParse(item['quantity']?.toString() ?? '1') ?? 1,
-              'condition': item['condition']?.toString() ?? 'نیا (New)',
-              'condition_status': item['condition_status']?.toString() ?? 'نیا (New)',
-              'asset_type': item['asset_type']?.toString() ?? 'Purchased',
-              'donor_name': item['donor_name']?.toString() ?? '',
-              'donor_father': item['donor_father']?.toString() ?? '',
-              'donor_address': item['donor_address']?.toString() ?? '',
-              'donor_phone': item['donor_phone']?.toString() ?? '',
-              'system_type': item['system_type']?.toString() ?? 'Masjid',
-              'is_synced': 1,
-              'is_deleted': int.tryParse(item['is_deleted']?.toString() ?? '0') ?? 0,
-            },
-            conflictAlgorithm: ConflictAlgorithm.replace,
-          );
-        }
-      } catch (e) {
-        debugPrint("Sync Error (masjid_assets): $e");
-      }
-    }
-
     if (data['acc_ledger_entries'] != null) {
       try {
         batch.delete('acc_ledger_entries',
@@ -3670,63 +3585,6 @@ class DBHelper {
         }
       } catch (e) {
         debugPrint("Sync Error (acc_invoices): $e");
-      }
-    }
-
-    if (data['masjid_finance_entries'] != null || data['masjid_finance_history'] != null) {
-      try {
-        final list = data['masjid_finance_entries'] ?? data['masjid_finance_history'];
-        batch.delete('masjid_finance', where: 'is_synced = ?', whereArgs: [1]);
-        for (var item in list) {
-          batch.insert(
-            'masjid_finance',
-            {
-              'id': item['id'],
-              'date': item['date']?.toString() ?? '',
-              'type': item['type']?.toString() ?? 'Income',
-              'amount': double.tryParse(item['amount']?.toString() ?? '0') ?? 0.0,
-              'head_id': int.tryParse(item['head_id']?.toString() ?? '0') ?? 0,
-              'description': item['description']?.toString() ?? '',
-              'user_id': int.tryParse(item['user_id']?.toString() ?? '1') ?? 1,
-              'user_name': item['user_name']?.toString() ?? '',
-              'system_type': 'Masjid',
-              'is_synced': 1,
-              'is_deleted': int.tryParse(item['is_deleted']?.toString() ?? '0') ?? 0,
-            },
-            conflictAlgorithm: ConflictAlgorithm.replace,
-          );
-        }
-      } catch (e) {
-        debugPrint("Sync Error (masjid_finance): $e");
-      }
-    }
-
-    if (data['in_kind_donations'] != null) {
-      try {
-        batch.delete('in_kind_donations', where: 'is_synced = ?', whereArgs: [1]);
-        for (var item in data['in_kind_donations']) {
-          batch.insert(
-            'in_kind_donations',
-            {
-              'id': item['id'],
-              'date': item['date']?.toString() ?? '',
-              'item_name': item['item_name']?.toString() ?? '',
-              'quantity': int.tryParse(item['quantity']?.toString() ?? '1') ?? 1,
-              'donor_name': item['donor_name']?.toString() ?? '',
-              'donor_phone': item['donor_phone']?.toString() ?? '',
-              'donor_address': item['donor_address']?.toString() ?? '',
-              'description': item['description']?.toString() ?? '',
-              'estimated_value': double.tryParse(item['estimated_value']?.toString() ?? '0') ?? 0.0,
-              'computer_receipt_no': int.tryParse(item['computer_receipt_no']?.toString() ?? '0') ?? 0,
-              'system_type': item['system_type']?.toString() ?? 'Madrasa',
-              'is_synced': 1,
-              'is_deleted': int.tryParse(item['is_deleted']?.toString() ?? '0') ?? 0,
-            },
-            conflictAlgorithm: ConflictAlgorithm.replace,
-          );
-        }
-      } catch (e) {
-        debugPrint("Sync Error (in_kind_donations): $e");
       }
     }
 
@@ -3869,26 +3727,6 @@ class DBHelper {
   }
 
   Future<void> forceMigrate(Database db) async {
-    try {
-      await db.execute('''
-        CREATE TABLE IF NOT EXISTS masjid_assets(
-          id INTEGER PRIMARY KEY,
-          name TEXT,
-          category TEXT,
-          quantity INTEGER,
-          condition TEXT,
-          condition_status TEXT,
-          asset_type TEXT,
-          donor_name TEXT,
-          donor_father TEXT,
-          donor_address TEXT,
-          donor_phone TEXT,
-          system_type TEXT DEFAULT 'Masjid',
-          is_synced INTEGER DEFAULT 0,
-          is_deleted INTEGER DEFAULT 0
-        )
-      ''');
-    } catch (_) {}
     try {
       await _createAccountingTables(db);
     } catch (_) {}
@@ -4033,37 +3871,6 @@ class DBHelper {
     for (final entry in teacherCols.entries) {
       await _addColumnIfNotExists(db, 'teachers', entry.key, entry.value);
     }
-
-    final sysTypeTables = [
-      'students',
-      'teachers',
-      'classes',
-      'attendance',
-      'exams',
-      'exam_results',
-      'finance',
-      'acc_invoices',
-      'acc_vouchers',
-      'acc_payroll',
-      'departments',
-      'complaints',
-      'in_kind_donations',
-      'masjid_assets',
-      'academic_reports',
-      'qaida_records',
-      'hifz_record',
-      'nazira_record',
-      'husn_saut_record',
-      'maktab_attendance',
-      'maktab_exams'
-    ];
-    for (var tbl in sysTypeTables) {
-      String defVal = (tbl == 'masjid_assets' || tbl == 'masjid_finance') ? 'Masjid' : 'Madrasa';
-      await _addColumnIfNotExists(db, tbl, 'system_type', "TEXT DEFAULT '$defVal'");
-      try {
-        await db.execute("UPDATE $tbl SET system_type = '$defVal' WHERE system_type IS NULL OR system_type = ''");
-      } catch (_) {}
-    }
   }
 
   Future<List<Map<String, dynamic>>> getAccPayroll() async {
@@ -4150,32 +3957,17 @@ class DBHelper {
 
  // --- Maktab Helper Methods ---
 
-  Future<List<Map<String, dynamic>>> getMaktabStudents() async {
-    Database db = await database;
-    try {
-      final list1 = await db.query('maktab_students',
-          where: "(status IS NULL OR LOWER(TRIM(status)) IN ('active', '', 'present')) AND (is_deleted = 0 OR is_deleted IS NULL)",
-          orderBy: 'name ASC');
-      final list2 = await db.query('students',
-          where: "(is_deleted = 0 OR is_deleted IS NULL) AND (system_type = 'Masjid' OR is_maktab = 1)",
-          orderBy: 'name ASC');
-      final combined = [...list1, ...list2];
-      final Map<String, Map<String, dynamic>> unique = {};
-      for (var s in combined) {
-        String key = (s['id'] ?? s['name'] ?? '').toString();
-        unique[key] = s;
-      }
-      return unique.values.toList();
-    } catch (e) {
-      try {
-        return await db.query('students',
-            where: "(is_deleted = 0 OR is_deleted IS NULL) AND (system_type = 'Masjid' OR is_maktab = 1)",
-            orderBy: 'name ASC');
-      } catch (_) {
-        return [];
-      }
-    }
-  }
+ Future<List<Map<String, dynamic>>> getMaktabStudents() async {
+   Database db = await database;
+   try {
+     return await db.query('maktab_students',
+         where:
+             "(status IS NULL OR LOWER(TRIM(status)) IN ('active', '', 'present', '????')) AND (is_deleted = 0 OR is_deleted IS NULL)'",
+         orderBy: 'name ASC');
+   } catch (e) {
+     return await db.query('maktab_students', orderBy: 'name ASC');
+   }
+ }
 
  Future<int> insertMaktabStudent(Map<String, dynamic> row) async {
    Database db = await database;
@@ -4194,32 +3986,17 @@ class DBHelper {
        where: 'id = ?', whereArgs: [id]);
  }
 
-  Future<List<Map<String, dynamic>>> getMaktabTeachers() async {
-    Database db = await database;
-    try {
-      final list1 = await db.query('maktab_teachers',
-          where: "(status IS NULL OR LOWER(TRIM(status)) IN ('active', '', 'present')) AND (is_deleted = 0 OR is_deleted IS NULL)",
-          orderBy: 'name ASC');
-      final list2 = await db.query('teachers',
-          where: "(is_deleted = 0 OR is_deleted IS NULL) AND (system_type = 'Masjid' OR is_maktab = 1)",
-          orderBy: 'name ASC');
-      final combined = [...list1, ...list2];
-      final Map<String, Map<String, dynamic>> unique = {};
-      for (var t in combined) {
-        String key = (t['id'] ?? t['name'] ?? '').toString();
-        unique[key] = t;
-      }
-      return unique.values.toList();
-    } catch (e) {
-      try {
-        return await db.query('teachers',
-            where: "(is_deleted = 0 OR is_deleted IS NULL) AND (system_type = 'Masjid' OR is_maktab = 1)",
-            orderBy: 'name ASC');
-      } catch (_) {
-        return [];
-      }
-    }
-  }
+ Future<List<Map<String, dynamic>>> getMaktabTeachers() async {
+   Database db = await database;
+   try {
+     return await db.query('maktab_teachers',
+         where:
+             "(status IS NULL OR LOWER(TRIM(status)) IN ('active', '', 'present', '????')) AND (is_deleted = 0 OR is_deleted IS NULL)'",
+         orderBy: 'name ASC');
+   } catch (e) {
+     return await db.query('maktab_teachers', orderBy: 'name ASC');
+   }
+ }
 
  Future<int> insertMaktabTeacher(Map<String, dynamic> row) async {
    Database db = await database;
@@ -4267,37 +4044,21 @@ class DBHelper {
        where: 'id = ?', whereArgs: [id]);
  }
 
-  Future<List<Map<String, dynamic>>> getMaktabAttendance() async {
-    Database db = await database;
-    try {
-      final list1 = await db.query('maktab_attendance',
-          where: '(is_deleted = 0 OR is_deleted IS NULL) AND (system_type = "Masjid" OR system_type IS NULL OR system_type = "")');
-      final list2 = await db.query('attendance',
-          where: '(is_deleted = 0 OR is_deleted IS NULL) AND (system_type = "Masjid" OR is_maktab = 1)');
-      return [...list1, ...list2];
-    } catch (_) {
-      return await db.query('maktab_attendance',
-          where: '(is_deleted = 0 OR is_deleted IS NULL)');
-    }
-  }
+ Future<List<Map<String, dynamic>>> getMaktabAttendance() async {
+   Database db = await database;
+   return await db.query('maktab_attendance',
+       where:
+           '(is_deleted = 0 OR is_deleted IS NULL) AND system_type = \'${SystemTypeGlobal.currentSystemType.value}\'');
+ }
 
-  Future<List<Map<String, dynamic>>> getMaktabAttendanceByDate(
-      String date) async {
-    Database db = await database;
-    try {
-      final list1 = await db.query('maktab_attendance',
-          where: 'date = ? AND (is_deleted = 0 OR is_deleted IS NULL) AND (system_type = "Masjid" OR system_type IS NULL OR system_type = "")',
-          whereArgs: [date]);
-      final list2 = await db.query('attendance',
-          where: 'date = ? AND (is_deleted = 0 OR is_deleted IS NULL) AND (system_type = "Masjid" OR is_maktab = 1)',
-          whereArgs: [date]);
-      return [...list1, ...list2];
-    } catch (_) {
-      return await db.query('maktab_attendance',
-          where: 'date = ? AND (is_deleted = 0 OR is_deleted IS NULL)',
-          whereArgs: [date]);
-    }
-  }
+ Future<List<Map<String, dynamic>>> getMaktabAttendanceByDate(
+     String date) async {
+   Database db = await database;
+   return await db.query('maktab_attendance',
+       where:
+           'date = ? AND (is_deleted = 0 OR is_deleted IS NULL)',
+       whereArgs: [date]);
+ }
 
  Future<int> insertMaktabAttendance(Map<String, dynamic> row) async {
    Database db = await database;
@@ -4513,95 +4274,5 @@ class DBHelper {
     return await db.query('teachers',
         where:
             'is_deleted = 0 AND system_type = \'${SystemTypeGlobal.currentSystemType.value}\' AND staff_type != \'Teacher\' AND staff_type IS NOT NULL AND staff_type != \'\' AND staff_type != \'استاد / قاری\'');
-  }
-
-  Future<List<Map<String, dynamic>>> getMaktabStaff() async {
-    final db = await database;
-    return await db.query('teachers',
-        where:
-            "(is_deleted = 0 OR is_deleted IS NULL) AND system_type = 'Masjid' AND staff_type != 'Teacher' AND staff_type IS NOT NULL AND staff_type != '' AND staff_type != 'استاد / قاری'");
-  }
-
-  Future<List<Map<String, dynamic>>> getInKindDonations({String? systemType}) async {
-    Database db = await database;
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS in_kind_donations(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        server_id INTEGER NULL,
-        date TEXT,
-        item_name TEXT,
-        quantity INTEGER,
-        donor_name TEXT,
-        donor_phone TEXT,
-        donor_address TEXT,
-        description TEXT,
-        estimated_value REAL,
-        computer_receipt_no INTEGER,
-        system_type TEXT DEFAULT 'Masjid',
-        is_synced INTEGER DEFAULT 0,
-        is_deleted INTEGER DEFAULT 0,
-        user_id INTEGER,
-        user_name TEXT
-      )
-    ''');
-    if (systemType != null && systemType.isNotEmpty) {
-      return await db.query('in_kind_donations',
-          where: '(is_deleted = 0 OR is_deleted IS NULL) AND (system_type = ? OR system_type IS NULL OR system_type = "")',
-          whereArgs: [systemType],
-          orderBy: 'date DESC, id DESC');
-    }
-    return await db.query('in_kind_donations',
-        where: 'is_deleted = 0 OR is_deleted IS NULL',
-        orderBy: 'date DESC, id DESC');
-  }
-
-  Future<int> insertInKindDonation(Map<String, dynamic> data) async {
-    Database db = await database;
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS in_kind_donations(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        server_id INTEGER NULL,
-        date TEXT,
-        item_name TEXT,
-        quantity INTEGER,
-        donor_name TEXT,
-        donor_phone TEXT,
-        donor_address TEXT,
-        description TEXT,
-        estimated_value REAL,
-        computer_receipt_no INTEGER,
-        system_type TEXT DEFAULT 'Masjid',
-        is_synced INTEGER DEFAULT 0,
-        is_deleted INTEGER DEFAULT 0,
-        user_id INTEGER,
-        user_name TEXT
-      )
-    ''');
-    data['is_synced'] = 0;
-    return await db.insert('in_kind_donations', data);
-  }
-
-  Future<int> updateInKindDonation(int id, Map<String, dynamic> data) async {
-    Database db = await database;
-    data['is_synced'] = 0;
-    return await db.update('in_kind_donations', data, where: 'id = ?', whereArgs: [id]);
-  }
-
-  Future<int> deleteInKindDonation(int id) async {
-    Database db = await database;
-    return await db.update('in_kind_donations', {'is_deleted': 1, 'is_synced': 0},
-        where: 'id = ?', whereArgs: [id]);
-  }
 }
-
-
-
-
-
-
-
-
-
-
-
-
+}

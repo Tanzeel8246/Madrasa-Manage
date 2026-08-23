@@ -80,7 +80,7 @@ class MyApp extends StatelessWidget {
         return style.copyWith(
           fontFamily: 'JameelNooriNastaleeq',
           height: urduHeight,
-          fontSize: style.fontSize != null ? style.fontSize! * 1.3 : null,
+          fontSize: style.fontSize != null ? style.fontSize! + 3.0 : null,
         );
       }
 

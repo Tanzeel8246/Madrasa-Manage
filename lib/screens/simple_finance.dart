@@ -1510,4 +1510,3 @@ class _SimpleFinancePageState extends State<SimpleFinancePage> {
     );
   }
 }
-

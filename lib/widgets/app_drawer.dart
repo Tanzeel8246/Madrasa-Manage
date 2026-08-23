@@ -18,17 +18,13 @@ import '../screens/acc_income_statement.dart';
 import '../screens/acc_invoices.dart';
 import '../screens/acc_ledger.dart';
 import '../screens/acc_payroll.dart';
-import '../screens/staff_loans.dart';
 import '../screens/acc_trial_balance.dart';
 import '../screens/acc_balance_sheet.dart';
 import '../screens/acc_vouchers.dart';
-import '../screens/in_kind_donations.dart';
 import '../screens/departments.dart';
 import '../screens/manage_complaints.dart';
 
 import '../screens/home.dart';
-import '../screens/masjid_assets.dart';
-import '../screens/masjid_itikaf.dart';
 import '../screens/manage_users.dart';
 import '../screens/notices.dart';
 import '../screens/pay_fee.dart';
@@ -46,7 +42,7 @@ import '../screens/teachers.dart';
 import '../utils/globals.dart';
 import '../utils/session.dart';
 import '../utils/system_type_global.dart';
-
+import '../screens/masjid_dashboard.dart';
 
 class AppDrawer extends StatefulWidget {
   const AppDrawer({super.key});
@@ -70,7 +66,6 @@ class _AppDrawerState extends State<AppDrawer> {
 
   @override
   Widget build(BuildContext context) {
-    final isMasjidActive = SystemTypeGlobal.currentSystemType.value == 'Masjid';
     return Drawer(
       backgroundColor: bgColor,
       child: ValueListenableBuilder<bool>(
@@ -95,7 +90,10 @@ class _AppDrawerState extends State<AppDrawer> {
                     children: [
                       Image.asset('assets/logo.png', height: 60),
                       const SizedBox(height: 10),
-                      Text(SystemTypeGlobal.currentSystemType.value == 'Masjid' ? (isUrdu ? 'مسجد' : 'Masjid') : (isUrdu ? 'مدرسہ اشرف المدارس' : 'Madrasa Ashraf-ul-Madaris'),
+                      Text(
+                        isUrdu
+                            ? 'مدرسہ اشرف المدارس'
+                            : 'Madrasa Ashraf-ul-Madaris',
                         style: TextStyle(
                           color: primaryGreen,
                           fontSize: 18,
@@ -105,100 +103,6 @@ class _AppDrawerState extends State<AppDrawer> {
                       ),
                     ],
                   ),
-                ),
-                // مسجد / مدرسہ سوئچر (ٹیبز)
-                ValueListenableBuilder<String>(
-                  valueListenable: SystemTypeGlobal.currentSystemType,
-                  builder: (context, sysType, _) {
-                    final isMasjid = sysType == 'Masjid';
-                    return Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: primaryGreen.withValues(alpha: 0.3)),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.05),
-                            blurRadius: 4,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: GestureDetector(
-                              onTap: () {
-                                if (isMasjid) {
-                                  SystemTypeGlobal.currentSystemType.value = 'Madrasa';
-                                  Navigator.pop(context);
-                                  Navigator.pushReplacement(
-                                    context,
-                                    MaterialPageRoute(builder: (_) => const DashboardPage()),
-                                  );
-                                }
-                              },
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(vertical: 10),
-                                decoration: BoxDecoration(
-                                  color: !isMasjid ? primaryGreen : Colors.transparent,
-                                  borderRadius: BorderRadius.only(
-                                    topLeft: Radius.circular(isUrdu ? 0 : 11),
-                                    bottomLeft: Radius.circular(isUrdu ? 0 : 11),
-                                    topRight: Radius.circular(isUrdu ? 11 : 0),
-                                    bottomRight: Radius.circular(isUrdu ? 11 : 0),
-                                  ),
-                                ),
-                                child: Text(
-                                  isUrdu ? 'مدرسہ' : 'Madrasa',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    color: !isMasjid ? Colors.white : primaryGreen,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          Expanded(
-                            child: GestureDetector(
-                              onTap: () {
-                                if (!isMasjid) {
-                                  SystemTypeGlobal.currentSystemType.value = 'Masjid';
-                                  Navigator.pop(context);
-                                  Navigator.pushReplacement(
-                                    context,
-                                    MaterialPageRoute(builder: (_) => const DashboardPage()),
-                                  );
-                                }
-                              },
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(vertical: 10),
-                                decoration: BoxDecoration(
-                                  color: isMasjid ? const Color(0xFF1A4A5A) : Colors.transparent,
-                                  borderRadius: BorderRadius.only(
-                                    topLeft: Radius.circular(isUrdu ? 11 : 0),
-                                    bottomLeft: Radius.circular(isUrdu ? 11 : 0),
-                                    topRight: Radius.circular(isUrdu ? 0 : 11),
-                                    bottomRight: Radius.circular(isUrdu ? 0 : 11),
-                                  ),
-                                ),
-                                child: Text(
-                                  isUrdu ? 'مسجد' : 'Masjid',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    color: isMasjid ? Colors.white : const Color(0xFF1A4A5A),
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
                 ),
                 _buildDrawerItem(
                   context,
@@ -212,76 +116,68 @@ class _AppDrawerState extends State<AppDrawer> {
                   Icons.dashboard,
                   const DashboardPage(),
                 ),
-                
-                if (['admin', 'nazim', 'teacher'].contains(currentUserRole.value)) ...[
-                  if (isMasjidActive) ...[
-
-                  if (hasPerm('manage_classes'))
-                    _buildDrawerItem(
-                      context,
-                      isUrdu ? 'کلاسز' : 'Classes',
-                      Icons.class_,
-                      const ClassesPage(),
-                    ),
-                  if (hasPerm('manage_teachers'))
-                    _buildDrawerItem(
-                      context,
-                      isUrdu ? 'اساتذہ' : 'Teachers',
-                      Icons.person_outline,
-                      const TeachersPage(),
-                    ),
-                  if (hasPerm('manage_students'))
-                    _buildDrawerItem(
-                      context,
-                      isUrdu ? 'طلباء' : 'Students',
-                      Icons.school,
-                      const StudentsPage(),
-                    ),
-                  if (hasPerm('manage_hifz') || hasPerm('manage_academics')) ...[
-                    _buildDrawerItem(
-                      context,
-                      isUrdu ? 'تعلیمی کارکردگی (اندراج)' : 'Academic Entry',
-                      Icons.edit_document,
-                      const AcademicEntryDashboardPage(),
-                    ),
-                    _buildDrawerItem(
-                      context,
-                      isUrdu ? 'تعلیمی کارکردگی (دیکھیں)' : 'Academic View',
-                      Icons.analytics,
-                      const AcademicViewDashboardPage(),
-                    ),
-                  ],
-                  if (hasPerm('manage_attendance')) ...[
-                    _buildDrawerItem(
-                      context,
-                      isUrdu ? 'حاضری رجسٹر' : 'Attendance',
-                      Icons.fact_check,
-                      const AttendancePage(),
-                    ),
-                    _buildDrawerItem(
-                      context,
-                      isUrdu ? 'حاضری رپورٹ' : 'Attendance Report',
-                      Icons.receipt_long,
-                      const ReportsAttendancePage(),
-                    ),
-                  ],
-                  _buildDrawerItem(
-                    context,
-                    isUrdu ? 'اثاثہ جات' : 'Assets',
-                    Icons.inventory,
-                    const MasjidAssetsPage(),
-                  ),
-                  if (hasPerm('manage_finance'))
-                    _buildErpSubMenu(context, isUrdu, isMasjidActive),
-                  _buildDrawerItem(
-                    context,
-                    isUrdu ? 'اعتکاف' : 'Itikaf',
-                    Icons.mosque,
-                    const MasjidItikafPage(),
-                  ),
-
-                  ] else ...[
-
+                // مسجد / مدرسہ سوئچر
+                ValueListenableBuilder<String>(
+                  valueListenable: SystemTypeGlobal.currentSystemType,
+                  builder: (context, sysType, _) {
+                    final isMasjid = sysType == 'Masjid';
+                    return Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: isMasjid
+                            ? const Color(0xFF1A4A5A).withValues(alpha: 0.12)
+                            : primaryGreen.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: isMasjid
+                              ? const Color(0xFF1A4A5A)
+                              : primaryGreen,
+                          width: 1.5,
+                        ),
+                      ),
+                      child: ListTile(
+                        dense: true,
+                        leading: Icon(
+                          isMasjid ? Icons.account_balance : Icons.mosque,
+                          color: isMasjid ? const Color(0xFF1A4A5A) : primaryGreen,
+                        ),
+                        title: Text(
+                          isMasjid
+                              ? (isUrdu ? 'مسجد موڈ — مدرسہ پر جائیں' : 'Masjid Mode — Switch to Madrasa')
+                              : (isUrdu ? 'مدرسہ موڈ — مسجد پر جائیں' : 'Madrasa Mode — Switch to Masjid'),
+                          style: TextStyle(
+                            color: isMasjid ? const Color(0xFF1A4A5A) : primaryGreen,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                        ),
+                        trailing: Icon(
+                          Icons.swap_horiz,
+                          color: isMasjid ? const Color(0xFF1A4A5A) : primaryGreen,
+                          size: 20,
+                        ),
+                        onTap: () {
+                          final newType = isMasjid ? 'Madrasa' : 'Masjid';
+                          SystemTypeGlobal.currentSystemType.value = newType;
+                          Navigator.pop(context);
+                          if (newType == 'Masjid') {
+                            Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(builder: (_) => const MasjidDashboard()),
+                            );
+                          } else {
+                            Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(builder: (_) => const DashboardPage()),
+                            );
+                          }
+                        },
+                      ),
+                    );
+                  },
+                ),
+                if (['admin', 'nazim', 'teacher']
+                    .contains(currentUserRole.value)) ...[
                   if (hasPerm('manage_admissions'))
                     _buildDrawerItem(
                       context,
@@ -389,8 +285,8 @@ class _AppDrawerState extends State<AppDrawer> {
                     ),
                   ],
                   // مالیات سب مینیو — finance + ERP grouped together
-                  if (hasPerm('manage_finance') || (!isMasjidActive && hasPerm('manage_erp')))
-                    _buildErpSubMenu(context, isUrdu, isMasjidActive),
+                  if (hasPerm('manage_finance') || hasPerm('manage_erp'))
+                    _buildErpSubMenu(context, isUrdu),
                   if (hasPerm('add_complaint'))
                     _buildDrawerItem(
                       context,
@@ -420,8 +316,6 @@ class _AppDrawerState extends State<AppDrawer> {
                     ),
                   ],
                 ],
-                ],
-
                 if (currentUserRole.value == 'student' ||
                     currentUserRole.value == 'parent') ...[
                   _buildDrawerItem(
@@ -521,7 +415,7 @@ class _AppDrawerState extends State<AppDrawer> {
   }
 
   /// مالیات سب مینیو (Expandable ERP tile)
-  Widget _buildErpSubMenu(BuildContext context, bool isUrdu, bool isMasjidActive) {
+  Widget _buildErpSubMenu(BuildContext context, bool isUrdu) {
     return Theme(
       data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
       child: ExpansionTile(
@@ -556,15 +450,8 @@ class _AppDrawerState extends State<AppDrawer> {
               Icons.request_quote,
               const ReportsFinancePage(),
             ),
-            if (isMasjidActive)
-              _buildSubDrawerItem(
-                context,
-                isUrdu ? 'اشیاء عطیات' : 'In-Kind Donations',
-                Icons.card_giftcard,
-                const InKindDonationsScreen(),
-              ),
           ],
-          if (!isMasjidActive && hasPerm('manage_erp')) ...[
+          if (hasPerm('manage_erp')) ...[
             _buildSubDrawerItem(
               context,
               isUrdu ? 'فنانس ڈیش بورڈ' : 'Finance Dashboard',
