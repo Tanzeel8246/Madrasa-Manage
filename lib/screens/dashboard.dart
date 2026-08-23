@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart' as intl;
 
 import '../db_helper.dart';
+import '../utils/system_type_global.dart';
 import '../utils/globals.dart';
 import '../utils/sync_service.dart';
 import '../widgets/app_drawer.dart';
@@ -23,6 +24,12 @@ import 'simple_finance.dart';
 import 'student_report.dart';
 import 'students.dart';
 import 'teachers.dart';
+import 'masjid_assets.dart';
+import 'masjid_itikaf.dart';
+import 'academic_view_dashboard.dart';
+import 'reports_attendance.dart';
+import 'in_kind_donations.dart';
+
 
 class DashboardPage extends StatefulWidget {
   final bool autoSync;
@@ -124,19 +131,24 @@ class _DashboardPageState extends State<DashboardPage> {
     final db = DBHelper();
     final database = await db.database;
 
+    final sysVal = SystemTypeGlobal.currentSystemType.value;
+    final sysCond = sysVal == 'Madrasa'
+        ? "(system_type = 'Madrasa' OR system_type IS NULL OR system_type = '')"
+        : "system_type = 'Masjid'";
+
     // 1. Get counts directly using SQL COUNT
     final activeStudentsCountRes = await database.rawQuery(
-        "SELECT COUNT(*) as count FROM students WHERE LOWER(TRIM(status)) IN ('active', 'present', '') AND (is_deleted = 0 OR is_deleted IS NULL)");
+        "SELECT COUNT(*) as count FROM students WHERE LOWER(TRIM(status)) IN ('active', 'present', '') AND (is_deleted = 0 OR is_deleted IS NULL) AND $sysCond");
     final activeStudentsCount =
         (activeStudentsCountRes.first['count'] as num?)?.toInt() ?? 0;
 
     final alumniCountRes = await database.rawQuery(
-        "SELECT COUNT(*) as count FROM students WHERE LOWER(TRIM(status)) IN ('alumni', 'graduated') AND (is_deleted = 0 OR is_deleted IS NULL)");
+        "SELECT COUNT(*) as count FROM students WHERE LOWER(TRIM(status)) IN ('alumni', 'graduated') AND (is_deleted = 0 OR is_deleted IS NULL) AND $sysCond");
     final activeAlumniCount =
         (alumniCountRes.first['count'] as num?)?.toInt() ?? 0;
 
     final activeTeachersCountRes = await database.rawQuery(
-        "SELECT COUNT(*) as count FROM teachers WHERE (LOWER(status) IN ('active', '') OR status IS NULL) AND (is_deleted = 0 OR is_deleted IS NULL)");
+        "SELECT COUNT(*) as count FROM teachers WHERE (LOWER(status) IN ('active', '') OR status IS NULL) AND (is_deleted = 0 OR is_deleted IS NULL) AND $sysCond");
     final activeTeachersCount =
         (activeTeachersCountRes.first['count'] as num?)?.toInt() ?? 0;
 
@@ -146,7 +158,7 @@ class _DashboardPageState extends State<DashboardPage> {
         (noticesCountRes.first['count'] as num?)?.toInt() ?? 0;
 
     final classesCountRes = await database.rawQuery(
-        "SELECT COUNT(*) as count FROM classes WHERE (is_deleted = 0 OR is_deleted IS NULL)");
+        "SELECT COUNT(*) as count FROM classes WHERE (is_deleted = 0 OR is_deleted IS NULL) AND $sysCond");
     final activeClassesCount =
         (classesCountRes.first['count'] as num?)?.toInt() ?? 0;
 
@@ -155,7 +167,7 @@ class _DashboardPageState extends State<DashboardPage> {
     final currentYearMonth =
         "${now.year}-${now.month.toString().padLeft(2, '0')}";
     final monthlyExpensesRes = await database.rawQuery(
-        "SELECT SUM(amount) as sum FROM finance WHERE LOWER(TRIM(type)) = 'expense' AND (is_deleted = 0 OR is_deleted IS NULL) AND date LIKE ?",
+        "SELECT SUM(amount) as sum FROM finance WHERE LOWER(TRIM(type)) = 'expense' AND (is_deleted = 0 OR is_deleted IS NULL) AND $sysCond AND date LIKE ?",
         ['$currentYearMonth%']);
     final monthlyExp =
         (monthlyExpensesRes.first['sum'] as num?)?.toDouble() ?? 0.0;
@@ -170,39 +182,48 @@ class _DashboardPageState extends State<DashboardPage> {
     var todayAbsent = 0;
     var todayLeave = 0;
     var todayLate = 0;
+    var todayTotal = 0;
     for (final a in todayAtts) {
-      final status = (a['status'] ?? '').toString().toLowerCase();
-      final delayMinutes =
-          int.tryParse(a['delay_minutes']?.toString() ?? '0') ?? 0;
-      if (delayMinutes > 0) {
+      final s = (a['status'] ?? '').toString().toUpperCase();
+      if (s.isEmpty) continue;
+      todayTotal++;
+      final delayStr = (a['delay_minutes'] ?? '').toString();
+      final delay = int.tryParse(delayStr) ?? 0;
+      
+      if (delay > 0 || s == 'LATE') {
         todayLate++;
-      } else if (status.contains('absent') || status.contains('غیر')) {
+      } else if (s == 'A' || s.contains('ABSENT') || s.contains('غائب') || s.contains('غیر حاضر')) {
         todayAbsent++;
-      } else if (status.contains('leave') || status.contains('رخصت')) {
+      } else if (s == 'L' || s.contains('LEAVE') || s.contains('R') || s.contains('رخصت')) {
         todayLeave++;
-      } else if (status.contains('present') || status.contains('حاضر')) {
+      } else if (s == 'P' || s.contains('PRESENT') || s.contains('حاضر')) {
         todayPresent++;
       }
     }
     String pct(int value) {
-      if (todayAtts.isEmpty) return '0%';
-      return '${((value / todayAtts.length) * 100).round()}%';
+      if (todayTotal == 0) return '0%';
+      return '%';
     }
 
     final todaySummary = isUrduGlobal.value
-        ? 'حاضر: ${pct(todayPresent)} | غیر: ${pct(todayAbsent)}\nرخصت: ${pct(todayLeave)} | تاخیر: ${pct(todayLate)}'
-        : 'P: ${pct(todayPresent)} | A: ${pct(todayAbsent)}\nL: ${pct(todayLeave)} | Late: ${pct(todayLate)}';
+        ? 'حاضر:  | غیر: \nرخصت:  | تاخیر: '
+        : 'P:  | A: \nL:  | Late: ';
 
-    // 4. Query monthly attendance directly from DB
     final monthlyAtts = await database.rawQuery(
         "SELECT status FROM attendance WHERE date LIKE ? AND (is_deleted = 0 OR is_deleted IS NULL)",
         ['$currentYearMonth%']);
-    final presentCount = monthlyAtts.where((a) {
-      final s = a['status'].toString().toUpperCase();
-      return s == 'P' || s == 'L' || s.contains('حاضر');
-    }).length;
-    final monthlyPercent =
-        monthlyAtts.isEmpty ? 0.0 : (presentCount / monthlyAtts.length) * 100;
+    
+    var mTotal = 0;
+    var mPresent = 0;
+    for (final a in monthlyAtts) {
+      final s = (a['status'] ?? '').toString().toUpperCase();
+      if (s.isEmpty) continue;
+      mTotal++;
+      if (s == 'P' || s.contains('حاضر')) mPresent++;
+    }
+    
+    final monthlyAttPct = mTotal > 0 ? (mPresent / mTotal) * 100 : 0.0;
+    double monthlyPercent = monthlyAttPct;
 
     // 5. Query user name if student
     String userName =
@@ -210,7 +231,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
     if (currentUserRole.value == 'student' && currentUserId.value != null) {
       final studentRes = await database.rawQuery(
-          "SELECT name FROM students WHERE id = ? LIMIT 1",
+          "SELECT name FROM students WHERE id = ? AND $sysCond LIMIT 1",
           [currentUserId.value.toString()]);
       if (studentRes.isNotEmpty) {
         userName = studentRes.first['name']?.toString() ?? userName;
@@ -227,7 +248,7 @@ class _DashboardPageState extends State<DashboardPage> {
     List<Map<String, dynamic>> parentChildrenList = [];
     if (currentUserRole.value == 'parent') {
       parentChildrenList = await database.query('students',
-          where: 'is_deleted = 0 OR is_deleted IS NULL');
+          where: '$sysCond AND (is_deleted = 0 OR is_deleted IS NULL)');
     }
 
     setState(() {
@@ -247,84 +268,174 @@ class _DashboardPageState extends State<DashboardPage> {
 
   List<Map<String, dynamic>> _parentChildren = [];
   List<_DashboardCard> _staffCards() {
-    final cards = <_DashboardCard>[
-      _DashboardCard(
-        permission: 'manage_students',
-        urTitle: 'زیر تعلیم طلبہ',
-        enTitle: 'Enrolled Students',
-        value: studentsCount.toString(),
-        icon: Icons.school,
-        page: const StudentsPage(),
-      ),
-      _DashboardCard(
-        permission: 'manage_teachers',
-        urTitle: 'اساتذہ',
-        enTitle: 'Teachers',
-        value: teachersCount.toString(),
-        icon: Icons.people,
-        page: const TeachersPage(),
-      ),
-      _DashboardCard(
-        permission: 'manage_classes',
-        urTitle: '\u06a9\u0644\u0627\u0633\u0632',
-        enTitle: 'Classes',
-        value: classesCount.toString(),
-        icon: Icons.class_,
-        page: const ClassesPage(),
-      ),
-      _DashboardCard(
-        permission: 'manage_attendance',
-        urTitle: 'آج کی حاضری',
-        enTitle: "Today's Attendance",
-        value: todayAttendanceSummary,
-        icon: Icons.fact_check,
-        page: const AttendancePage(),
-      ),
-      _DashboardCard(
-        permission: 'manage_finance',
-        urTitle: 'اس ماہ کے اخراجات',
-        enTitle: 'This Month Expenses',
-        value: monthlyExpenses.toInt().toString(),
-        icon: Icons.money_off,
-        page: const SimpleFinancePage(),
-      ),
-      _DashboardCard(
-        permission: 'manage_hifz|manage_academics',
-        urTitle: 'تعلیمی کارکردگی (اندراج)',
-        enTitle: 'Academic Performance (Entry)',
-        icon: Icons.edit_document,
-        page: const AcademicEntryDashboardPage(),
-      ),
-      _DashboardCard(
-        permission: 'manage_exams',
-        urTitle: 'امتحانات',
-        enTitle: 'Exams',
-        icon: Icons.assignment,
-        page: const ExamsPage(),
-      ),
-      _DashboardCard(
-        permission: 'add_complaint',
-        urTitle: 'شکایت اندراج',
-        enTitle: 'Complaint Entry',
-        icon: Icons.report_problem,
-        page: const ComplaintsPage(),
-      ),
-      _DashboardCard(
-        permission: 'manage_requests',
-        urTitle: 'درخواستیں و شکایات',
-        enTitle: 'Requests & Complaints',
-        icon: Icons.notifications_active,
-        page: const RequestsPage(),
-      ),
-      _DashboardCard(
-        permission: 'manage_notices',
-        urTitle: 'اعلانات',
-        enTitle: 'Notices',
-        value: noticesCount.toString(),
-        icon: Icons.notifications,
-        page: const NoticesPage(),
-      ),
-    ];
+    final isMasjid = SystemTypeGlobal.currentSystemType.value == 'Masjid';
+    List<_DashboardCard> cards;
+
+    if (isMasjid) {
+      cards = <_DashboardCard>[
+        _DashboardCard(
+          permission: 'manage_students',
+          urTitle: 'مکتب طلباء',
+          enTitle: 'Maktab Students',
+          value: studentsCount.toString(),
+          icon: Icons.school,
+          page: const StudentsPage(),
+        ),
+        _DashboardCard(
+          permission: 'manage_teachers',
+          urTitle: 'مکتب اساتذہ',
+          enTitle: 'Maktab Teachers',
+          value: teachersCount.toString(),
+          icon: Icons.people,
+          page: const TeachersPage(),
+        ),
+        _DashboardCard(
+          permission: 'manage_classes',
+          urTitle: 'مکتب کلاسز',
+          enTitle: 'Maktab Classes',
+          value: classesCount.toString(),
+          icon: Icons.class_,
+          page: const ClassesPage(),
+        ),
+        _DashboardCard(
+          permission: 'manage_attendance',
+          urTitle: 'رجسٹر حاضری',
+          enTitle: 'Attendance Register',
+          value: todayAttendanceSummary,
+          icon: Icons.fact_check,
+          page: const AttendancePage(),
+        ),
+        _DashboardCard(
+          permission: 'manage_attendance',
+          urTitle: 'حاضری رپورٹ',
+          enTitle: 'Attendance Report',
+          icon: Icons.receipt_long,
+          page: const ReportsAttendancePage(),
+        ),
+        _DashboardCard(
+          permission: 'manage_hifz|manage_academics',
+          urTitle: 'تعلیمی رپورٹ (اندراج)',
+          enTitle: 'Academic Entry',
+          icon: Icons.edit_document,
+          page: const AcademicEntryDashboardPage(),
+        ),
+        _DashboardCard(
+          permission: 'manage_hifz|manage_academics',
+          urTitle: 'تعلیمی رپورٹ (دیکھیں)',
+          enTitle: 'Academic View',
+          icon: Icons.analytics,
+          page: const AcademicViewDashboardPage(),
+        ),
+        _DashboardCard(
+          permission: 'manage_finance',
+          urTitle: 'مسجد آمدن و خرچ',
+          enTitle: 'Masjid Finance',
+          value: monthlyExpenses.toInt().toString(),
+          icon: Icons.account_balance_wallet,
+          page: const SimpleFinancePage(),
+        ),
+        _DashboardCard(
+          permission: 'manage_finance',
+          urTitle: 'اشیاء عطیات',
+          enTitle: 'In-Kind Donations',
+          icon: Icons.card_giftcard,
+          page: InKindDonationsScreen(),
+        ),
+        _DashboardCard(
+          permission: 'manage_assets',
+          urTitle: 'اثاثہ جات',
+          enTitle: 'Assets',
+          icon: Icons.inventory,
+          page: const MasjidAssetsPage(),
+        ),
+        _DashboardCard(
+          permission: 'manage_itikaf',
+          urTitle: 'اعتکاف',
+          enTitle: 'Itikaf',
+          icon: Icons.mosque,
+          page: const MasjidItikafPage(),
+        ),
+      ];
+    } else {
+      cards = <_DashboardCard>[
+        _DashboardCard(
+          permission: 'manage_students',
+          urTitle: 'زیر تعلیم طلبہ',
+          enTitle: 'Enrolled Students',
+          value: studentsCount.toString(),
+          icon: Icons.school,
+          page: const StudentsPage(),
+        ),
+        _DashboardCard(
+          permission: 'manage_teachers',
+          urTitle: 'اساتذہ',
+          enTitle: 'Teachers',
+          value: teachersCount.toString(),
+          icon: Icons.people,
+          page: const TeachersPage(),
+        ),
+        _DashboardCard(
+          permission: 'manage_classes',
+          urTitle: 'کلاسز',
+          enTitle: 'Classes',
+          value: classesCount.toString(),
+          icon: Icons.class_,
+          page: const ClassesPage(),
+        ),
+        _DashboardCard(
+          permission: 'manage_attendance',
+          urTitle: 'آج کی حاضری',
+          enTitle: "Today's Attendance",
+          value: todayAttendanceSummary,
+          icon: Icons.fact_check,
+          page: const AttendancePage(),
+        ),
+        _DashboardCard(
+          permission: 'manage_finance',
+          urTitle: 'اس ماہ کے اخراجات',
+          enTitle: 'This Month Expenses',
+          value: monthlyExpenses.toInt().toString(),
+          icon: Icons.money_off,
+          page: const SimpleFinancePage(),
+        ),
+        _DashboardCard(
+          permission: 'manage_hifz|manage_academics',
+          urTitle: 'تعلیمی کارکردگی (اندراج)',
+          enTitle: 'Academic Performance (Entry)',
+          icon: Icons.edit_document,
+          page: const AcademicEntryDashboardPage(),
+        ),
+        _DashboardCard(
+          permission: 'manage_exams',
+          urTitle: 'امتحانات',
+          enTitle: 'Exams',
+          icon: Icons.assignment,
+          page: const ExamsPage(),
+        ),
+        _DashboardCard(
+          permission: 'add_complaint',
+          urTitle: 'شکایت اندراج',
+          enTitle: 'Complaint Entry',
+          icon: Icons.report_problem,
+          page: const ComplaintsPage(),
+        ),
+        _DashboardCard(
+          permission: 'manage_requests',
+          urTitle: 'درخواستیں و شکایات',
+          enTitle: 'Requests & Complaints',
+          icon: Icons.notifications_active,
+          page: const RequestsPage(),
+        ),
+        _DashboardCard(
+          permission: 'manage_notices',
+          urTitle: 'اعلانات',
+          enTitle: 'Notices',
+          value: noticesCount.toString(),
+          icon: Icons.notifications,
+          page: const NoticesPage(),
+        ),
+      ];
+    }
 
     final visible = cards.where((card) => _hasPerm(card.permission)).toList();
     if (currentUserRole.value == 'admin') {
@@ -450,7 +561,7 @@ class _DashboardPageState extends State<DashboardPage> {
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      isUrdu ? 'ڈیش بورڈ' : 'Dashboard',
+                      isUrdu ? (SystemTypeGlobal.currentSystemType.value == 'Masjid' ? 'مسجد ڈیش بورڈ' : 'ڈیش بورڈ') : (SystemTypeGlobal.currentSystemType.value == 'Masjid' ? 'Masjid Dashboard' : 'Dashboard'),
                       style: const TextStyle(
                           fontWeight: FontWeight.bold, fontSize: 18),
                     ),

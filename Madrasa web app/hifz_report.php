@@ -270,6 +270,50 @@ function applyHifzPeriodDates(val) {
                     $hifz_map[$rec['date']][$rec['student_id']] = $rec;
                 }
 
+
+                // Fetch Attendance for all students in class to link Absent / Leave students
+                $hifz_student_ids = array_map(function($st) { return (int)$st['id']; }, $all_hifz_students);
+                $att_records = [];
+                if (!empty($hifz_student_ids)) {
+                    $in_clause = implode(',', $hifz_student_ids);
+                    $att_sql = "SELECT student_id, date, status, status_1, status_2, status_3, status_4 FROM attendance WHERE student_id IN ($in_clause)";
+                    try {
+                        $att_stmt = $pdo->query($att_sql);
+                        $att_records = $att_stmt->fetchAll(PDO::FETCH_ASSOC);
+                    } catch (PDOException $e) {
+                        $att_records = [];
+                    }
+                }
+
+                $att_map = [];
+                foreach ($att_records as $a) {
+                    $getS = function($k) use ($a) {
+                        $s = strtoupper(trim($a[$k] ?? ''));
+                        if ($s === '' && $k === 'status_1') $s = strtoupper(trim($a['status'] ?? ''));
+                        $tokens = preg_split('/\s+/', $s);
+                        if (strpos($s, 'ABSENT') !== false || strpos($s, 'غیر حاضر') !== false || strpos($s, 'غائب') !== false || in_array('A', $tokens, true) || in_array('غ', $tokens, true)) return 'A';
+                        if (strpos($s, 'LEAVE') !== false || strpos($s, 'رخصت') !== false || in_array('L', $tokens, true) || in_array('ر', $tokens, true)) return 'L';
+                        if (strpos($s, 'P') !== false || strpos($s, 'حاضر') !== false) return 'P';
+                        return $s !== '' ? 'P' : '';
+                    };
+                    $v1 = $getS('status_1');
+                    $v2 = $getS('status_2');
+                    $v3 = $getS('status_3');
+                    
+                    $dRaw = trim($a['date'] ?? '');
+                    $sid = (int)$a['student_id'];
+                    $att_map[$dRaw][$sid] = ['s1' => $v1, 's2' => $v2, 's3' => $v3];
+
+                    $dNorm = '';
+                    if (preg_match('/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/', $dRaw, $m)) {
+                        $dNorm = sprintf('%04d-%02d-%02d', $m[1], $m[2], $m[3]);
+                    } elseif (preg_match('/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/', $dRaw, $m)) {
+                        $dNorm = sprintf('%04d-%02d-%02d', $m[3], $m[2], $m[1]);
+                    }
+                    if ($dNorm) {
+                        $att_map[$dNorm][$sid] = ['s1' => $v1, 's2' => $v2, 's3' => $v3];
+                    }
+                }
                 // Fetch Complaints for the date range
                 $c_sql = "SELECT c.student_id, c.date, c.complaint as description, 'admin' as type FROM complaints c WHERE c.date BETWEEN ? AND ?";
                 $pc_sql = "SELECT p.student_id, p.date, CONCAT('[', p.category, '] ', p.description) as description, 'parent' as type FROM parent_complaints p WHERE p.date BETWEEN ? AND ?";
@@ -316,73 +360,88 @@ function applyHifzPeriodDates(val) {
                         $summary_missed_sabaq = 0;
                         $summary_missed_sabqi = 0;
                         $summary_missed_manzil = 0;
+                        $summary_absent_cnt = 0;
+                        $summary_leave_cnt = 0;
                         $daily_complaints = 0;
+                        $day_of_week = date('N', strtotime($date));
+                        $is_thursday = ($day_of_week == 4);
+                        $is_friday = ($day_of_week == 5);
                         
                         $sr_no = 1;
                         foreach ($all_hifz_students as $student) {
                             $student_id = $student['id'];
                             $rec = $hifz_map[$date][$student_id] ?? null;
                             
+                            $attStatus = $att_map[$date][$student_id] ?? ['s1'=>'', 's2'=>'', 's3'=>''];
+                            
+                            $as1 = $attStatus['s1'] ?? '';
+                            $as2 = $attStatus['s2'] ?? '';
+                            $as3 = $attStatus['s3'] ?? '';
+
+                            if ($rec) {
+                                if ($rec['sabaq_status'] === 'غیر حاضر' || $rec['sabaq_status'] === 'Absent') $as1 = 'A';
+                                elseif ($rec['sabaq_status'] === 'رخصت' || $rec['sabaq_status'] === 'Leave') $as1 = 'L';
+                                if ($rec['sabqi_status'] === 'غیر حاضر' || $rec['sabqi_status'] === 'Absent') $as2 = 'A';
+                                elseif ($rec['sabqi_status'] === 'رخصت' || $rec['sabqi_status'] === 'Leave') $as2 = 'L';
+                                if ($rec['manzil_status'] === 'غیر حاضر' || $rec['manzil_status'] === 'Absent') $as3 = 'A';
+                                elseif ($rec['manzil_status'] === 'رخصت' || $rec['manzil_status'] === 'Leave') $as3 = 'L';
+                            }
+
+                            if ($as1 === 'A' || $as2 === 'A' || $as3 === 'A') $summary_absent_cnt++;
+                            if ($as1 === 'L' || $as2 === 'L' || $as3 === 'L') $summary_leave_cnt++;
+
+                            $process_period = function($stat, $prefix) use (&$rec, &$summary_missed_sabaq, &$summary_missed_sabqi, &$summary_missed_manzil, &$freq_sabaq, &$freq_sabqi, &$freq_manzil, $student_id, $is_thursday, $is_friday) {
+                                $p = [];
+                                if ($is_friday || ($is_thursday && $prefix === 'manzil')) {
+                                    $b = "<span class='text-primary fw-bold'>تعطیل</span>";
+                                    $p['parah'] = $b; $p['status'] = $b; $p['amount'] = '-'; $p['time'] = ''; $p['listener'] = '-';
+                                    return $p;
+                                }
+                                $p = [];
+                                if ($stat === 'A') {
+                                    $b = "<span class='text-danger fw-bold'>غیر حاضر</span>";
+                                    $p['parah'] = $b; $p['status'] = $b; $p['amount'] = '-'; $p['time'] = ''; $p['listener'] = '-';
+                                } elseif ($stat === 'L') {
+                                    $b = "<span class='text-success fw-bold'>رخصت</span>";
+                                    $p['parah'] = $b; $p['status'] = $b; $p['amount'] = '-'; $p['time'] = ''; $p['listener'] = '-';
+                                } else {
+                                    $m_p = $prefix == 'manzil' ? 'manzil_details' : ($prefix.'_parah');
+                                    $m_a = $prefix == 'sabaq' ? 'sabaq_lines' : ($prefix.'_amount');
+                                    
+                                    $missed = !$rec || empty(trim($rec[$prefix.'_status'] ?? '')) || ($rec[$prefix.'_status'] ?? '') == 'ناغہ' || ($rec[$prefix.'_status'] ?? '') == '-';
+                                    $missed = $missed || empty(trim($rec[$m_p] ?? '')) || ($rec[$m_p] ?? '') == '-';
+                                    
+                                    if ($missed) {
+                                        if ($prefix == 'sabaq') { $summary_missed_sabaq++; $freq_sabaq[$student_id] = ($freq_sabaq[$student_id] ?? 0) + 1; }
+                                        if ($prefix == 'sabqi') { $summary_missed_sabqi++; $freq_sabqi[$student_id] = ($freq_sabqi[$student_id] ?? 0) + 1; }
+                                        if ($prefix == 'manzil') { $summary_missed_manzil++; $freq_manzil[$student_id] = ($freq_manzil[$student_id] ?? 0) + 1; }
+                                        
+                                        $p['status'] = '-'; $p['parah'] = '-'; $p['amount'] = '-'; $p['time'] = ''; $p['listener'] = '-';
+                                    } else {
+                                        $p['parah'] = cleanUrduStr($rec[$m_p] ?? '');
+                                        $p['amount'] = htmlspecialchars($rec[$m_a] ?? '');
+                                        $p['status'] = translateStatusClean($rec[$prefix.'_status'] ?? '');
+                                        $p['time'] = !empty($rec[$prefix.'_time']) ? "<br><small class='text-muted' dir='ltr'>".date("h:i A", strtotime($rec[$prefix.'_time']))."</small>" : "";
+                                        $p['listener'] = htmlspecialchars($rec[$prefix.'_listener'] ?? '');
+                                    }
+                                }
+                                return $p;
+                            };
+
+                            $p_sabaq = $process_period($as1, 'sabaq');
+                            $p_sabqi = $process_period($as2, 'sabqi');
+                            $p_manzil = $process_period($as3, 'manzil');
+
+                            $sabaq_parah = $p_sabaq['parah']; $sabaq_lines = $p_sabaq['amount']; $sabaq_status = $p_sabaq['status']; $sabaq_time = $p_sabaq['time'];
+                            $sabqi_parah = $p_sabqi['parah']; $sabqi_amount = $p_sabqi['amount']; $sabqi_status = $p_sabqi['status']; $sabqi_time = $p_sabqi['time']; $sabqi_listener = $p_sabqi['listener'];
+                            $manzil_parah = $p_manzil['parah']; $manzil_amount = $p_manzil['amount']; $manzil_status = $p_manzil['status']; $manzil_time = $p_manzil['time']; $manzil_listener = $p_manzil['listener'];
+
                             if ($rec) {
                                 $students_with_records[] = $student_id;
                                 $totalSabaq += getGradePoints($rec['sabaq_status'], 30);
                                 $totalSabqi += getGradePoints($rec['sabqi_status'], 30);
                                 $totalManzil += getGradePoints($rec['manzil_status'], 40);
                                 $h_count++;
-                                
-                                if (empty(trim($rec['sabaq_parah'])) || $rec['sabaq_status'] == 'ناغہ' || $rec['sabaq_status'] == 'Absent' || empty(trim($rec['sabaq_status']))) {
-                                    $summary_missed_sabaq++;
-                                    $freq_sabaq[$student_id] = ($freq_sabaq[$student_id] ?? 0) + 1;
-                                }
-                                if (empty(trim($rec['sabqi_parah'])) || $rec['sabqi_status'] == 'ناغہ' || $rec['sabqi_status'] == 'Absent' || empty(trim($rec['sabqi_status']))) {
-                                    $summary_missed_sabqi++;
-                                    $freq_sabqi[$student_id] = ($freq_sabqi[$student_id] ?? 0) + 1;
-                                }
-                                if (empty(trim($rec['manzil_parah'])) || $rec['manzil_status'] == 'ناغہ' || $rec['manzil_status'] == 'Absent' || empty(trim($rec['manzil_status']))) {
-                                    $summary_missed_manzil++;
-                                    $freq_manzil[$student_id] = ($freq_manzil[$student_id] ?? 0) + 1;
-                                }
-                                
-                                $sabaq_parah = cleanUrduStr($rec['sabaq_parah'] ?? '');
-                                $sabaq_lines = htmlspecialchars($rec['sabaq_lines'] ?? '');
-                                $sabaq_status = translateStatusClean($rec['sabaq_status'] ?? '');
-                                $sabaq_time = !empty($rec['sabaq_time']) ? "<br><small class='text-muted' dir='ltr'>".date("h:i A", strtotime($rec['sabaq_time']))."</small>" : "";
-                                
-                                $sabqi_parah = cleanUrduStr($rec['sabqi_parah'] ?? '');
-                                $sabqi_amount = translateQtyClean($rec['sabqi_amount'] ?? '');
-                                $sabqi_status = translateStatusClean($rec['sabqi_status'] ?? '');
-                                $sabqi_time = !empty($rec['sabqi_time']) ? "<br><small class='text-muted' dir='ltr'>".date("h:i A", strtotime($rec['sabqi_time']))."</small>" : "";
-                                $sabqi_listener = htmlspecialchars($rec['sabqi_listener'] ?? '');
-                                
-                                $manzil_parah = cleanUrduStr($rec['manzil_parah'] ?? '');
-                                $manzil_amount = htmlspecialchars($rec['manzil_amount'] ?? '');
-                                $manzil_status = translateStatusClean($rec['manzil_status'] ?? '');
-                                $manzil_time = !empty($rec['manzil_time']) ? "<br><small class='text-muted' dir='ltr'>".date("h:i A", strtotime($rec['manzil_time']))."</small>" : "";
-                                $manzil_listener = htmlspecialchars($rec['manzil_listener'] ?? '');
-                            } else {
-                                $summary_missed_sabaq++;
-                                $summary_missed_sabqi++;
-                                $summary_missed_manzil++;
-                                $freq_sabaq[$student_id] = ($freq_sabaq[$student_id] ?? 0) + 1;
-                                $freq_sabqi[$student_id] = ($freq_sabqi[$student_id] ?? 0) + 1;
-                                $freq_manzil[$student_id] = ($freq_manzil[$student_id] ?? 0) + 1;
-
-                                $sabaq_parah = '-';
-                                $sabaq_lines = '-';
-                                $sabaq_status = '-';
-                                $sabaq_time = '';
-                                
-                                $sabqi_parah = '-';
-                                $sabqi_amount = '-';
-                                $sabqi_status = '-';
-                                $sabqi_time = '';
-                                $sabqi_listener = '-';
-                                
-                                $manzil_parah = '-';
-                                $manzil_amount = '-';
-                                $manzil_status = '-';
-                                $manzil_time = '';
-                                $manzil_listener = '-';
                             }
                             
                             $comp_key = $student_id . '_' . $date;
@@ -418,7 +477,7 @@ function applyHifzPeriodDates(val) {
                                 <td colspan='3' class='fw-bold text-end'>آج کی سمری ($formatted_date):</td>
                                 <td colspan='3' class='fw-bold' style='font-size:11px;'>
                                     <span class='text-danger'>ناغہ: <a href='$url_base&lesson_type=sabaq&miss_count=any' target='_blank'>$summary_missed_sabaq</a></span><br>
-                                    <span class='text-success'>سنانے والے: <a href='$url_base&lesson_type=sabaq&miss_count=0' target='_blank'>$sabaq_0</a></span>
+                                    <span class='text-success'>سنانے والے: <a href='$url_base&lesson_type=sabaq&miss_count=0' target='_blank'>$sabaq_0</a></span><br><span class='text-danger fw-bold'>غیر حاضر: <?php echo $summary_absent_cnt; ?></span><br><span class='text-success fw-bold'>رخصت: <?php echo $summary_leave_cnt; ?></span>
                                 </td>
                                 <td colspan='4' class='fw-bold' style='font-size:11px;'>
                                     <span class='text-danger'>ناغہ: <a href='$url_base&lesson_type=sabqi&miss_count=any' target='_blank'>$summary_missed_sabqi</a></span><br>

@@ -83,6 +83,14 @@ class _TeachersPageState extends State<TeachersPage> {
       'hifz_sabqi': 'hifz_after_breakfast',
       'hifz_manzil': 'hifz_noon',
       'hifz_review': 'hifz_evening',
+      'Period 1': '1',
+      'Period 2': '2',
+      'Period 3': '3',
+      'Period 4': '4',
+      'Period 5': '5',
+      'Period 6': '6',
+      'Period 7': '7',
+      'Period 8': '8',
     };
     return legacyHifz[key] ?? key;
   }
@@ -143,46 +151,22 @@ class _TeachersPageState extends State<TeachersPage> {
   bool _isNaziraClass(Map<String, dynamic> cls) =>
       _classTextContains(cls, ['\u0646\u0627\u0638\u0631\u06c1', 'nazira']);
 
+  bool _isQuranicClass(Map<String, dynamic> cls) =>
+      _classTextContains(cls, ['\u0642\u0627\u0639\u062f\u06c1', 'qaida', '\u062a\u062c\u0648\u06cc\u062f', 'tajweed', '\u062d\u0633\u0646', 'husn']);
+
   List<Map<String, String>> _periodOptionsForClass(Map<String, dynamic> cls) {
     if (_isNaziraClass(cls)) {
       return const [
-        {
-          'value': 'nazira_morning',
-          'labelUr': '\u0635\u0628\u062d',
-          'labelEn': 'Morning'
-        },
-        {
-          'value': 'nazira_evening',
-          'labelUr': '\u0634\u0627\u0645',
-          'labelEn': 'Evening'
-        },
+        {'value': '1', 'labelUr': 'صبح کا سیشن (Morning Shift)', 'labelEn': 'Morning Shift'},
+        {'value': '2', 'labelUr': 'شام کا سیشن (Evening Shift)', 'labelEn': 'Evening Shift'},
       ];
     }
-    if (_isHifzClass(cls)) {
+    if (_isHifzClass(cls) || _isQuranicClass(cls)) {
       return const [
-        {
-          'value': 'hifz_morning',
-          'labelUr': '\u0635\u0628\u062d',
-          'labelEn': 'Morning'
-        },
-        {
-          'value': 'hifz_after_breakfast',
-          'labelUr':
-              '\u0646\u0627\u0634\u062a\u06c1 \u06a9\u06d2 \u0628\u0639\u062f',
-          'labelEn': 'After Breakfast'
-        },
-        {
-          'value': 'hifz_noon',
-          'labelUr':
-              '\u062f\u0648\u067e\u06c1\u0631 (\u0638\u06c1\u0631 \u06a9\u06d2 \u0628\u0639\u062f)',
-          'labelEn': 'Noon (After Zuhr)'
-        },
-        {
-          'value': 'hifz_evening',
-          'labelUr':
-              '\u0634\u0627\u0645 (\u0645\u063a\u0631\u0628 \u06a9\u06d2 \u0628\u0639\u062f)',
-          'labelEn': 'Evening (After Maghrib)'
-        },
+        {'value': '1', 'labelUr': 'صبح کا سیشن (Morning Shift)', 'labelEn': 'Morning Shift'},
+        {'value': '2', 'labelUr': 'دوپہر کا سیشن (Noon Shift)', 'labelEn': 'Noon Shift'},
+        {'value': '3', 'labelUr': 'عصر / شام کا سیشن (Evening Shift)', 'labelEn': 'Evening Shift'},
+        {'value': '4', 'labelUr': 'مغرب / عشاء کا سیشن (Night Shift)', 'labelEn': 'Night Shift'},
       ];
     }
     return _periodOptions;

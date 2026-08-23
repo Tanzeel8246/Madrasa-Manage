@@ -34,7 +34,7 @@ class _StudentsPageState extends State<StudentsPage> {
   String? _selectedClass;
 
   // پیجینیشن متغیرات (Pagination)
-  static const int _pageSize = 50;
+  static const int _pageSize = 200;
   int _activeOffset = 0;
   int _alumniOffset = 0;
   bool _hasMoreActive = true;

@@ -80,116 +80,193 @@ function has_perm($perm) {
 </head>
 <body>
 
+<?php 
+$system_type = $_SESSION['system_type'] ?? 'Madrasa';
+?>
 <div id="wrapper">
     <div id="sidebar-wrapper">
-        <div class="text-center py-4 border-bottom border-secondary bg-dark">
-            <img src="logo.png" alt="Logo" style="width: 70px; height: 70px; object-fit: contain; margin-bottom: 10px; border-radius: 50%; border: 2px solid white; background-color: white;">
-            <h5 class="mb-0 text-white fw-bold"><?php echo e(t('app_name')); ?></h5>
+        <div class="text-center py-3 border-bottom border-secondary bg-dark">
+            <img src="logo.png" alt="Logo" style="width: 65px; height: 65px; object-fit: contain; margin-bottom: 8px; border-radius: 50%; border: 2px solid white; background-color: white;">
+            <h5 class="mb-2 text-white fw-bold"><?php echo e(t('app_name')); ?></h5>
+            
+            <!-- Masjid / Madrasa Switcher Tabs -->
+            <div class="d-flex justify-content-center px-3 mt-2">
+                <div class="btn-group w-100 rounded-pill p-1" style="background: rgba(255, 255, 255, 0.15); border: 1px solid rgba(255,255,255,0.2);">
+                    <a href="switch_system.php?sys=Madrasa" class="btn btn-sm rounded-pill fw-bold <?php echo ($system_type === 'Madrasa') ? 'btn-success text-white shadow-sm' : 'text-white-50 border-0'; ?>" style="flex: 1; text-decoration: none;">
+                        <i class="fas fa-university me-1"></i> <?php echo ($lang=='ur') ? 'مدرسہ' : 'Madrasa'; ?>
+                    </a>
+                    <a href="switch_system.php?sys=Masjid" class="btn btn-sm rounded-pill fw-bold <?php echo ($system_type === 'Masjid') ? 'btn-success text-white shadow-sm' : 'text-white-50 border-0'; ?>" style="flex: 1; text-decoration: none;">
+                        <i class="fas fa-mosque me-1"></i> <?php echo ($lang=='ur') ? 'مسجد' : 'Masjid'; ?>
+                    </a>
+                </div>
+            </div>
         </div>
+        
         <div class="list-group list-group-flush mt-2 pb-5">
             <a href="./index.php" class="list-group-item <?php echo basename($_SERVER['PHP_SELF'])=='index.php'?'active-link':''; ?>"><i class="fas fa-globe me-2"></i> <?php echo t('home_page'); ?></a>
             
-            <?php if(isset($_SESSION['user_id'])): ?>
-                <a href="dashboard.php" class="list-group-item <?php echo basename($_SERVER['PHP_SELF'])=='dashboard.php'?'active-link':''; ?>"><i class="fas fa-tachometer-alt me-2"></i> <?php echo t('dashboard'); ?></a>
-            <?php endif; ?>
+            <?php if($system_type === 'Masjid'): ?>
+                <!-- MASJID NAVIGATION -->
+                <?php if(isset($_SESSION['user_id'])): ?>
+                    <a href="masjid_dashboard.php" class="list-group-item <?php echo basename($_SERVER['PHP_SELF'])=='masjid_dashboard.php'?'active-link':''; ?>"><i class="fas fa-mosque me-2 text-success"></i> <?php echo ($lang=='ur') ? 'مسجد ڈیش بورڈ' : 'Masjid Dashboard'; ?></a>
+                <?php endif; ?>
 
-            <?php if(in_array($role, ['admin', 'nazim', 'teacher'])): ?>
-                <?php if(has_perm('manage_requests')): ?>
-                <a href="admin_requests.php" class="list-group-item d-flex justify-content-between align-items-center <?php echo basename($_SERVER['PHP_SELF'])=='admin_requests.php'?'active-link':''; ?>">
-                    <span><i class="fas fa-bell me-2"></i> <?php echo t('requests'); ?></span>
-                    <?php if($pending_count > 0): ?>
-                        <span class="badge bg-danger rounded-pill"><?php echo $pending_count; ?></span>
+                <?php if(in_array($role, ['admin', 'nazim', 'teacher'])): ?>
+                    <!-- مکتب (نظامِ تعلیم) -->
+                    <a href="#maktabSubmenu" data-bs-toggle="collapse" class="list-group-item d-flex justify-content-between align-items-center">
+                        <span><i class="fas fa-book-quran me-2 text-warning"></i> <?php echo ($lang=='ur') ? 'مکتب (نظامِ تعلیم)' : 'Maktab System'; ?></span>
+                        <i class="fas fa-caret-down"></i>
+                    </a>
+                    <div class="collapse show" id="maktabSubmenu" style="background: rgba(0,0,0,0.2);">
+                        <?php if(has_perm('manage_classes')): ?>
+                        <a href="manage_classes.php" class="list-group-item ps-5 border-0 text-white <?php echo basename($_SERVER['PHP_SELF'])=='manage_classes.php'?'active-link':''; ?>"><i class="fas fa-chalkboard me-2"></i> <?php echo ($lang=='ur') ? 'قرآنی کلاسز (حفظ، ناظرہ، قاعدہ، حسن صوت)' : 'Quran Classes'; ?></a>
+                        <?php endif; ?>
+                        <?php if(has_perm('manage_students')): ?>
+                        <a href="students.php" class="list-group-item ps-5 border-0 text-white <?php echo basename($_SERVER['PHP_SELF'])=='students.php'?'active-link':''; ?>"><i class="fas fa-user-graduate me-2"></i> <?php echo ($lang=='ur') ? 'طلبہ ریکارڈ' : 'Students Record'; ?></a>
+                        <?php endif; ?>
+                        <?php if(has_perm('manage_teachers')): ?>
+                        <a href="teachers.php" class="list-group-item ps-5 border-0 text-white <?php echo basename($_SERVER['PHP_SELF'])=='teachers.php'?'active-link':''; ?>"><i class="fas fa-chalkboard-teacher me-2"></i> <?php echo ($lang=='ur') ? 'اساتذہ ریکارڈ' : 'Teachers Record'; ?></a>
+                        <?php endif; ?>
+                        <?php if(has_perm('manage_hifz') || has_perm('manage_academics')): ?>
+                        <a href="academic_entry_dashboard.php" class="list-group-item ps-5 border-0 text-white <?php echo basename($_SERVER['PHP_SELF'])=='academic_entry_dashboard.php'?'active-link':''; ?>"><i class="fas fa-edit me-2"></i> <?php echo ($lang=='ur') ? 'تعلیمی رپورٹ (اندراج)' : 'Academic Entry'; ?></a>
+                        <a href="academic_view_dashboard.php" class="list-group-item ps-5 border-0 text-white <?php echo basename($_SERVER['PHP_SELF'])=='academic_view_dashboard.php'?'active-link':''; ?>"><i class="fas fa-chart-line me-2"></i> <?php echo ($lang=='ur') ? 'تعلیمی رپورٹ (دیکھیں)' : 'Academic View'; ?></a>
+                        <?php endif; ?>
+                        <?php if(has_perm('manage_attendance')): ?>
+                        <a href="attendance.php" class="list-group-item ps-5 border-0 text-white <?php echo basename($_SERVER['PHP_SELF'])=='attendance.php'?'active-link':''; ?>"><i class="fas fa-calendar-check me-2"></i> <?php echo ($lang=='ur') ? 'حاضری رجسٹر' : 'Attendance Register'; ?></a>
+                        <a href="attendance_report.php" class="list-group-item ps-5 border-0 text-white <?php echo basename($_SERVER['PHP_SELF'])=='attendance_report.php'?'active-link':''; ?>"><i class="fas fa-file-signature me-2"></i> <?php echo ($lang=='ur') ? 'حاضری رپورٹ' : 'Attendance Report'; ?></a>
+                        <?php endif; ?>
+                        <?php if(has_perm('manage_exams')): ?>
+                        <a href="exams.php" class="list-group-item ps-5 border-0 text-white <?php echo basename($_SERVER['PHP_SELF'])=='exams.php'?'active-link':''; ?>"><i class="fas fa-clipboard-list me-2"></i> <?php echo ($lang=='ur') ? 'امتحانات' : 'Exams'; ?></a>
+                        <?php endif; ?>
+                    </div>
+
+                    <!-- وظائف و قرضہ جات -->
+                    <a href="staff_loans.php" class="list-group-item <?php echo basename($_SERVER['PHP_SELF'])=='staff_loans.php'?'active-link':''; ?>"><i class="fas fa-hand-holding-usd me-2 text-info"></i> <?php echo ($lang=='ur') ? 'وظائف و قرض/ایڈوانس' : 'Stipends & Loans'; ?></a>
+
+                    <!-- فنانس سیکشن -->
+                    <a href="#masjidFinanceSubmenu" data-bs-toggle="collapse" class="list-group-item d-flex justify-content-between align-items-center">
+                        <span><i class="fas fa-coins me-2 text-warning"></i> <?php echo ($lang=='ur') ? 'فنانس سیکشن (مسجد)' : 'Masjid Finance'; ?></span>
+                        <i class="fas fa-caret-down"></i>
+                    </a>
+                    <div class="collapse show" id="masjidFinanceSubmenu" style="background: rgba(0,0,0,0.2);">
+                        <a href="simple_finance.php" class="list-group-item ps-5 border-0 text-white <?php echo basename($_SERVER['PHP_SELF'])=='simple_finance.php'?'active-link':''; ?>"><i class="fas fa-cash-register me-2"></i> <?php echo ($lang=='ur') ? 'آمدن و خرچ' : 'Income & Expense'; ?></a>
+                        <a href="in_kind_donations.php" class="list-group-item ps-5 border-0 text-white <?php echo basename($_SERVER['PHP_SELF'])=='in_kind_donations.php'?'active-link':''; ?>"><i class="fas fa-gift me-2"></i> <?php echo ($lang=='ur') ? 'عطیات / اشیاء' : 'In-Kind Donations'; ?></a>
+                        <a href="masjid_assets.php" class="list-group-item ps-5 border-0 text-white <?php echo basename($_SERVER['PHP_SELF'])=='masjid_assets.php'?'active-link':''; ?>"><i class="fas fa-boxes me-2"></i> <?php echo ($lang=='ur') ? 'اثاثہ جات' : 'Assets'; ?></a>
+                        <a href="finance_report.php" class="list-group-item ps-5 border-0 text-white <?php echo basename($_SERVER['PHP_SELF'])=='finance_report.php'?'active-link':''; ?>"><i class="fas fa-chart-bar me-2"></i> <?php echo ($lang=='ur') ? 'فنانس رپورٹ' : 'Finance Report'; ?></a>
+                    </div>
+
+                    <!-- اعتکاف ریکارڈ -->
+                    <a href="masjid_itikaf.php" class="list-group-item <?php echo basename($_SERVER['PHP_SELF'])=='masjid_itikaf.php'?'active-link':''; ?>"><i class="fas fa-user-clock me-2 text-success"></i> <?php echo ($lang=='ur') ? 'اعتکاف ریکارڈ' : 'Itikaf Record'; ?></a>
+
+                    <?php if($role == 'admin'): ?>
+                    <a href="manage_users.php" class="list-group-item"><i class="fas fa-users-cog me-2"></i> <?php echo t('manage_users'); ?></a>
+                    <a href="settings.php" class="list-group-item"><i class="fas fa-cog me-2"></i> <?php echo t('settings'); ?></a>
                     <?php endif; ?>
-                </a>
                 <?php endif; ?>
 
-                <?php if(has_perm('manage_notices')): ?>
-                <a href="manage_notices.php" class="list-group-item"><i class="fas fa-bullhorn me-2"></i> <?php echo t('notice_board'); ?></a>
+            <?php else: ?>
+                <!-- MADRASA NAVIGATION -->
+                <?php if(isset($_SESSION['user_id'])): ?>
+                    <a href="dashboard.php" class="list-group-item <?php echo basename($_SERVER['PHP_SELF'])=='dashboard.php'?'active-link':''; ?>"><i class="fas fa-tachometer-alt me-2"></i> <?php echo t('dashboard'); ?></a>
                 <?php endif; ?>
+
+                <?php if(in_array($role, ['admin', 'nazim', 'teacher'])): ?>
+                    <?php if(has_perm('manage_requests')): ?>
+                    <a href="admin_requests.php" class="list-group-item d-flex justify-content-between align-items-center <?php echo basename($_SERVER['PHP_SELF'])=='admin_requests.php'?'active-link':''; ?>">
+                        <span><i class="fas fa-bell me-2"></i> <?php echo t('requests'); ?></span>
+                        <?php if($pending_count > 0): ?>
+                            <span class="badge bg-danger rounded-pill"><?php echo $pending_count; ?></span>
+                        <?php endif; ?>
+                    </a>
+                    <?php endif; ?>
+
+                    <?php if(has_perm('manage_notices')): ?>
+                    <a href="manage_notices.php" class="list-group-item"><i class="fas fa-bullhorn me-2"></i> <?php echo t('notice_board'); ?></a>
+                    <?php endif; ?>
+                    
+                    <?php if(has_perm('manage_classes')): ?>
+                    <a href="manage_classes.php" class="list-group-item <?php echo basename($_SERVER['PHP_SELF'])=='manage_classes.php'?'active-link':''; ?>"><i class="fas fa-chalkboard me-2"></i> <?php echo t('manage_classes'); ?></a>
+                    <?php endif; ?>
+
+                    <?php if(has_perm('manage_admissions')): ?>
+                    <a href="admin_admissions.php" class="list-group-item d-flex justify-content-between align-items-center <?php echo basename($_SERVER['PHP_SELF'])=='admin_admissions.php'?'active-link':''; ?>">
+                        <span><i class="fas fa-graduation-cap me-2"></i> <?php echo t('manage_admissions'); ?></span>
+                        <?php if(isset($p_admissions) && $p_admissions > 0): ?>
+                            <span class="badge bg-warning text-dark rounded-pill"><?php echo $p_admissions; ?></span>
+                        <?php endif; ?>
+                    </a>
+                    <?php endif; ?>
+                    
+                    <?php if(has_perm('manage_hifz') || has_perm('manage_academics')): ?>
+                    <a href="academic_entry_dashboard.php" class="list-group-item"><i class="fas fa-book-open me-2"></i> <?php echo t('manage_academic_dashboard'); ?></a>
+                    <a href="academic_view_dashboard.php" class="list-group-item"><i class="fas fa-chart-line me-2"></i> &#1578;&#1593;&#1604;&#1740;&#1605;&#1740; &#1705;&#1575;&#1585;&#1705;&#1585;&#1583;&#1711;&#1740; (&#1583;&#1740;&#1705;&#1726;&#1740;&#1722;)</a>
+                    <?php endif; ?>
+
+                    <?php if(has_perm('manage_students')): ?>
+                    <a href="students.php" class="list-group-item <?php echo basename($_SERVER['PHP_SELF'])=='students.php'?'active-link':''; ?>"><i class="fas fa-user-graduate me-2"></i> <?php echo t('students'); ?></a>
+                    <a href="alumni.php" class="list-group-item <?php echo basename($_SERVER['PHP_SELF'])=='alumni.php'?'active-link':''; ?>"><i class="fas fa-award me-2"></i> <?php echo t('alumni'); ?></a>
+                    <?php endif; ?>
+
+                    <?php if(has_perm('manage_teachers')): ?>
+                    <a href="teachers.php" class="list-group-item <?php echo basename($_SERVER['PHP_SELF'])=='teachers.php'?'active-link':''; ?>"><i class="fas fa-chalkboard-teacher me-2"></i> <?php echo t('teachers'); ?></a>
+                    <?php endif; ?>
+
+                    <?php if(has_perm('manage_teacher_attendance') || has_perm('manage_attendance')): ?>
+                    <a href="teachers_attendance.php" class="list-group-item <?php echo basename($_SERVER['PHP_SELF'])=='teachers_attendance.php'?'active-link':''; ?>"><i class="fas fa-user-clock me-2"></i> &#1581;&#1575;&#1590;&#1585;&#1740; &#1575;&#1587;&#1575;&#1578;&#1584;&#1729;</a>
+                    <a href="teacher_attendance_report.php" class="list-group-item <?php echo basename($_SERVER['PHP_SELF'])=='teacher_attendance_report.php'?'active-link':''; ?>"><i class="fas fa-file-signature me-2"></i> &#1581;&#1575;&#1590;&#1585;&#1740; &#1575;&#1587;&#1575;&#1578;&#1584;&#1729; &#1585;&#1662;&#1608;&#1585;&#1657;</a>
+                    <?php endif; ?>
+
+                    <?php if(has_perm('manage_attendance')): ?>
+                    <a href="attendance.php" class="list-group-item"><i class="fas fa-calendar-check me-2"></i> <?php echo t('attendance_register'); ?></a>
+                    <a href="attendance_report.php" class="list-group-item"><i class="fas fa-file-signature me-2"></i> <?php echo t('attendance_report'); ?></a>
+                    <?php endif; ?>
+
+                    <?php if(has_perm('manage_exams')): ?>
+                    <a href="exams.php" class="list-group-item"><i class="fas fa-clipboard-list me-2"></i> <?php echo t('exams'); ?></a>
+                    <?php endif; ?>
+
+                    <?php if(has_perm('manage_finance') || has_perm('manage_erp')): ?>
+                    <a href="#erpSubmenu" data-bs-toggle="collapse" class="list-group-item d-flex justify-content-between align-items-center">
+                        <span><i class="fas fa-file-invoice-dollar me-2 text-warning"></i> <?php echo t('erp_accounts'); ?></span>
+                        <i class="fas fa-caret-down"></i>
+                    </a>
+                    <div class="collapse" id="erpSubmenu" style="background: rgba(0,0,0,0.2);">
+                        <?php if(has_perm('manage_finance')): ?>
+                        <a href="simple_finance.php" class="list-group-item ps-5 border-0 text-white <?php echo basename($_SERVER['PHP_SELF'])=='simple_finance.php'?'active-link':''; ?>"><i class="fas fa-coins me-2"></i> &#1570;&#1605;&#1583;&#1606; &#1608; &#1582;&#1585;&#1670;</a>
+                        <a href="finance_report.php" class="list-group-item ps-5 border-0 text-white <?php echo basename($_SERVER['PHP_SELF'])=='finance_report.php'?'active-link':''; ?>"><i class="fas fa-chart-bar me-2"></i> <?php echo t('finance_report'); ?></a>
+                        <?php endif; ?>
+                        <?php if(has_perm('manage_erp')): ?>
+                        <a href="finance.php" class="list-group-item ps-5 border-0 text-white <?php echo basename($_SERVER['PHP_SELF'])=='finance.php'?'active-link':''; ?>"><i class="fas fa-wallet me-2"></i> <?php echo t('finance_dashboard_menu'); ?></a>
+                        <a href="manage_departments.php" class="list-group-item ps-5 border-0 text-white <?php echo basename($_SERVER['PHP_SELF'])=='manage_departments.php'?'active-link':''; ?>"><i class="fas fa-building me-2"></i> &#1588;&#1593;&#1576;&#1729; &#1580;&#1575;&#1578; / &#1576;&#1585;&#1575;&#1606;&#1670;&#1586;</a>
+                        <a href="acc_chart.php" class="list-group-item ps-5 border-0 text-white <?php echo basename($_SERVER['PHP_SELF'])=='acc_chart.php'?'active-link':''; ?>"><i class="fas fa-sitemap me-2"></i> <?php echo t('chart_of_accounts_menu'); ?></a>
+                        <a href="acc_vouchers.php" class="list-group-item ps-5 border-0 text-white <?php echo basename($_SERVER['PHP_SELF'])=='acc_vouchers.php'?'active-link':''; ?>"><i class="fas fa-receipt me-2"></i> <?php echo t('vouchers_menu'); ?></a>
+                        <a href="acc_ledger.php" class="list-group-item ps-5 border-0 text-white <?php echo basename($_SERVER['PHP_SELF'])=='acc_ledger.php'?'active-link':''; ?>"><i class="fas fa-book me-2"></i> <?php echo t('general_ledger_menu'); ?></a>
+                        <a href="acc_trial_balance.php" class="list-group-item ps-5 border-0 text-white <?php echo basename($_SERVER['PHP_SELF'])=='acc_trial_balance.php'?'active-link':''; ?>"><i class="fas fa-balance-scale me-2"></i> میزان (Trial Balance)</a>
+                        <a href="acc_income_statement.php" class="list-group-item ps-5 border-0 text-white <?php echo basename($_SERVER['PHP_SELF'])=='acc_income_statement.php'?'active-link':''; ?>"><i class="fas fa-chart-pie me-2"></i> آمدن و اخراجات (Income Stmt)</a>
+                        <a href="acc_balance_sheet.php" class="list-group-item ps-5 border-0 text-white <?php echo basename($_SERVER['PHP_SELF'])=='acc_balance_sheet.php'?'active-link':''; ?>"><i class="fas fa-balance-scale-left me-2"></i> بیلنس شیٹ (Balance Sheet)</a>
+                        <a href="acc_invoices.php" class="list-group-item ps-5 border-0 text-white <?php echo basename($_SERVER['PHP_SELF'])=='acc_invoices.php'?'active-link':''; ?>"><i class="fas fa-file-invoice me-2"></i> <?php echo t('fee_invoices_menu'); ?></a>
+                        <a href="acc_payroll.php" class="list-group-item ps-5 border-0 text-white <?php echo basename($_SERVER['PHP_SELF'])=='acc_payroll.php'?'active-link':''; ?>"><i class="fas fa-users-cog me-2"></i> <?php echo t('payroll_menu'); ?></a>
+                        <?php endif; ?>
+                    </div>
+                    <?php endif; ?>
+
+                    <?php if(has_perm('add_complaint') || in_array($role, ['admin', 'nazim'])): ?>
+                    <a href="add_complaint.php" class="list-group-item <?php echo basename($_SERVER['PHP_SELF'])=='add_complaint.php'?'active-link':''; ?>"><i class="fas fa-plus-circle me-2 text-danger"></i> &#1588;&#1705;&#1575;&#1740;&#1578; &#1705;&#1575; &#1575;&#1606;&#1583;&#1585;&#1575;&#1580;</a>
+                    <?php endif; ?>
+                    <?php if(has_perm('manage_complaints') || in_array($role, ['admin', 'nazim'])): ?>
+                    <a href="manage_complaints.php" class="list-group-item <?php echo basename($_SERVER['PHP_SELF'])=='manage_complaints.php'?'active-link':''; ?>"><i class="fas fa-exclamation-triangle me-2 text-danger"></i> &#1588;&#1705;&#1575;&#1740;&#1575;&#1578; &#1705;&#1575; &#1585;&#1740;&#1705;&#1575;&#1585;&#1672;</a>
+                    <?php endif; ?>
+                    <?php if($role == 'admin'): ?>
+                    <a href="manage_users.php" class="list-group-item"><i class="fas fa-users-cog me-2"></i> <?php echo t('manage_users'); ?></a>
+                    <a href="settings.php" class="list-group-item"><i class="fas fa-cog me-2"></i> <?php echo t('settings'); ?></a>
+                    <?php endif; ?>
                 
-                <?php if(has_perm('manage_classes')): ?>
-                <a href="manage_classes.php" class="list-group-item <?php echo basename($_SERVER['PHP_SELF'])=='manage_classes.php'?'active-link':''; ?>"><i class="fas fa-chalkboard me-2"></i> <?php echo t('manage_classes'); ?></a>
+                <?php elseif($role == 'parent'): ?>
+                    <a href="parent_report.php" class="list-group-item"><i class="fas fa-user-graduate me-2"></i> <?php echo t('my_report'); ?></a>
+                    <a href="parent_fee.php" class="list-group-item"><i class="fas fa-money-bill-wave me-2"></i> <?php echo t('pay_fee'); ?></a>
+                    <a href="parent_leave.php" class="list-group-item"><i class="fas fa-envelope-open-text me-2"></i> <?php echo t('apply_leave'); ?></a>
+                    <a href="parent_complaint.php" class="list-group-item text-danger"><i class="fas fa-frown me-2"></i> <?php echo t('parent_complaint'); ?></a>
                 <?php endif; ?>
-
-                <?php if(has_perm('manage_admissions')): ?>
-                <a href="admin_admissions.php" class="list-group-item d-flex justify-content-between align-items-center <?php echo basename($_SERVER['PHP_SELF'])=='admin_admissions.php'?'active-link':''; ?>">
-                    <span><i class="fas fa-graduation-cap me-2"></i> <?php echo t('manage_admissions'); ?></span>
-                    <?php if(isset($p_admissions) && $p_admissions > 0): ?>
-                        <span class="badge bg-warning text-dark rounded-pill"><?php echo $p_admissions; ?></span>
-                    <?php endif; ?>
-                </a>
-                <?php endif; ?>
-                
-                <?php if(has_perm('manage_hifz') || has_perm('manage_academics')): ?>
-                <a href="academic_entry_dashboard.php" class="list-group-item"><i class="fas fa-book-open me-2"></i> <?php echo t('manage_academic_dashboard'); ?></a>
-                <a href="academic_view_dashboard.php" class="list-group-item"><i class="fas fa-chart-line me-2"></i> &#1578;&#1593;&#1604;&#1740;&#1605;&#1740; &#1705;&#1575;&#1585;&#1705;&#1585;&#1583;&#1711;&#1740; (&#1583;&#1740;&#1705;&#1726;&#1740;&#1722;)</a>
-                <?php endif; ?>
-
-                <?php if(has_perm('manage_students')): ?>
-                <a href="students.php" class="list-group-item <?php echo basename($_SERVER['PHP_SELF'])=='students.php'?'active-link':''; ?>"><i class="fas fa-user-graduate me-2"></i> <?php echo t('students'); ?></a>
-                <a href="alumni.php" class="list-group-item <?php echo basename($_SERVER['PHP_SELF'])=='alumni.php'?'active-link':''; ?>"><i class="fas fa-award me-2"></i> <?php echo t('alumni'); ?></a>
-                <?php endif; ?>
-
-                <?php if(has_perm('manage_teachers')): ?>
-                <a href="teachers.php" class="list-group-item <?php echo basename($_SERVER['PHP_SELF'])=='teachers.php'?'active-link':''; ?>"><i class="fas fa-chalkboard-teacher me-2"></i> <?php echo t('teachers'); ?></a>
-                <?php endif; ?>
-
-                <?php if(has_perm('manage_teacher_attendance') || has_perm('manage_attendance')): ?>
-                <a href="teachers_attendance.php" class="list-group-item <?php echo basename($_SERVER['PHP_SELF'])=='teachers_attendance.php'?'active-link':''; ?>"><i class="fas fa-user-clock me-2"></i> &#1581;&#1575;&#1590;&#1585;&#1740; &#1575;&#1587;&#1575;&#1578;&#1584;&#1729;</a>
-                <a href="teacher_attendance_report.php" class="list-group-item <?php echo basename($_SERVER['PHP_SELF'])=='teacher_attendance_report.php'?'active-link':''; ?>"><i class="fas fa-file-signature me-2"></i> &#1581;&#1575;&#1590;&#1585;&#1740; &#1575;&#1587;&#1575;&#1578;&#1584;&#1729; &#1585;&#1662;&#1608;&#1585;&#1657;</a>
-                <?php endif; ?>
-
-                <?php if(has_perm('manage_attendance')): ?>
-                <a href="attendance.php" class="list-group-item"><i class="fas fa-calendar-check me-2"></i> <?php echo t('attendance_register'); ?></a>
-                <a href="attendance_report.php" class="list-group-item"><i class="fas fa-file-signature me-2"></i> <?php echo t('attendance_report'); ?></a>
-                <?php endif; ?>
-
-                <?php if(has_perm('manage_exams')): ?>
-                <a href="exams.php" class="list-group-item"><i class="fas fa-clipboard-list me-2"></i> <?php echo t('exams'); ?></a>
-                <?php endif; ?>
-
-                <?php if(has_perm('manage_finance') || has_perm('manage_erp')): ?>
-                <a href="#erpSubmenu" data-bs-toggle="collapse" class="list-group-item d-flex justify-content-between align-items-center">
-                    <span><i class="fas fa-file-invoice-dollar me-2 text-warning"></i> <?php echo t('erp_accounts'); ?></span>
-                    <i class="fas fa-caret-down"></i>
-                </a>
-                <div class="collapse" id="erpSubmenu" style="background: rgba(0,0,0,0.2);">
-                    <?php if(has_perm('manage_finance')): ?>
-                    <a href="simple_finance.php" class="list-group-item ps-5 border-0 text-white <?php echo basename($_SERVER['PHP_SELF'])=='simple_finance.php'?'active-link':''; ?>"><i class="fas fa-coins me-2"></i> &#1570;&#1605;&#1583;&#1606; &#1608; &#1582;&#1585;&#1670;</a>
-                    <a href="finance_report.php" class="list-group-item ps-5 border-0 text-white <?php echo basename($_SERVER['PHP_SELF'])=='finance_report.php'?'active-link':''; ?>"><i class="fas fa-chart-bar me-2"></i> <?php echo t('finance_report'); ?></a>
-                    <?php endif; ?>
-                    <?php if(has_perm('manage_erp')): ?>
-                    <a href="finance.php" class="list-group-item ps-5 border-0 text-white <?php echo basename($_SERVER['PHP_SELF'])=='finance.php'?'active-link':''; ?>"><i class="fas fa-wallet me-2"></i> <?php echo t('finance_dashboard_menu'); ?></a>
-                    <a href="manage_departments.php" class="list-group-item ps-5 border-0 text-white <?php echo basename($_SERVER['PHP_SELF'])=='manage_departments.php'?'active-link':''; ?>"><i class="fas fa-building me-2"></i> &#1588;&#1593;&#1576;&#1729; &#1580;&#1575;&#1578; / &#1576;&#1585;&#1575;&#1606;&#1670;&#1586;</a>
-                    <a href="acc_chart.php" class="list-group-item ps-5 border-0 text-white <?php echo basename($_SERVER['PHP_SELF'])=='acc_chart.php'?'active-link':''; ?>"><i class="fas fa-sitemap me-2"></i> <?php echo t('chart_of_accounts_menu'); ?></a>
-                    <a href="acc_vouchers.php" class="list-group-item ps-5 border-0 text-white <?php echo basename($_SERVER['PHP_SELF'])=='acc_vouchers.php'?'active-link':''; ?>"><i class="fas fa-receipt me-2"></i> <?php echo t('vouchers_menu'); ?></a>
-                    <a href="acc_ledger.php" class="list-group-item ps-5 border-0 text-white <?php echo basename($_SERVER['PHP_SELF'])=='acc_ledger.php'?'active-link':''; ?>"><i class="fas fa-book me-2"></i> <?php echo t('general_ledger_menu'); ?></a>
-                    <a href="acc_trial_balance.php" class="list-group-item ps-5 border-0 text-white <?php echo basename($_SERVER['PHP_SELF'])=='acc_trial_balance.php'?'active-link':''; ?>"><i class="fas fa-balance-scale me-2"></i> میزان (Trial Balance)</a>
-                    <a href="acc_income_statement.php" class="list-group-item ps-5 border-0 text-white <?php echo basename($_SERVER['PHP_SELF'])=='acc_income_statement.php'?'active-link':''; ?>"><i class="fas fa-chart-pie me-2"></i> آمدن و اخراجات (Income Stmt)</a>
-                    <a href="acc_balance_sheet.php" class="list-group-item ps-5 border-0 text-white <?php echo basename($_SERVER['PHP_SELF'])=='acc_balance_sheet.php'?'active-link':''; ?>"><i class="fas fa-balance-scale-left me-2"></i> بیلنس شیٹ (Balance Sheet)</a>
-                    <a href="acc_invoices.php" class="list-group-item ps-5 border-0 text-white <?php echo basename($_SERVER['PHP_SELF'])=='acc_invoices.php'?'active-link':''; ?>"><i class="fas fa-file-invoice me-2"></i> <?php echo t('fee_invoices_menu'); ?></a>
-                    <a href="acc_payroll.php" class="list-group-item ps-5 border-0 text-white <?php echo basename($_SERVER['PHP_SELF'])=='acc_payroll.php'?'active-link':''; ?>"><i class="fas fa-users-cog me-2"></i> <?php echo t('payroll_menu'); ?></a>
-                    <?php endif; ?>
-                </div>
-                <?php endif; ?>
-
-
-                <?php if(has_perm('add_complaint') || in_array($role, ['admin', 'nazim'])): ?>
-                <a href="add_complaint.php" class="list-group-item <?php echo basename($_SERVER['PHP_SELF'])=='add_complaint.php'?'active-link':''; ?>"><i class="fas fa-plus-circle me-2 text-danger"></i> &#1588;&#1705;&#1575;&#1740;&#1578; &#1705;&#1575; &#1575;&#1606;&#1583;&#1585;&#1575;&#1580;</a>
-                <?php endif; ?>
-                <?php if(has_perm('manage_complaints') || in_array($role, ['admin', 'nazim'])): ?>
-                <a href="manage_complaints.php" class="list-group-item <?php echo basename($_SERVER['PHP_SELF'])=='manage_complaints.php'?'active-link':''; ?>"><i class="fas fa-exclamation-triangle me-2 text-danger"></i> &#1588;&#1705;&#1575;&#1740;&#1575;&#1578; &#1705;&#1575; &#1585;&#1740;&#1705;&#1575;&#1585;&#1672;</a>
-                <?php endif; ?>
-                <?php if($role == 'admin'): ?>
-                <a href="manage_users.php" class="list-group-item"><i class="fas fa-users-cog me-2"></i> <?php echo t('manage_users'); ?></a>
-                <a href="settings.php" class="list-group-item"><i class="fas fa-cog me-2"></i> <?php echo t('settings'); ?></a>
-                <?php endif; ?>
-            
-            <?php elseif($role == 'parent'): ?>
-                <a href="parent_report.php" class="list-group-item"><i class="fas fa-user-graduate me-2"></i> <?php echo t('my_report'); ?></a>
-                <a href="parent_fee.php" class="list-group-item"><i class="fas fa-money-bill-wave me-2"></i> <?php echo t('pay_fee'); ?></a>
-                <a href="parent_leave.php" class="list-group-item"><i class="fas fa-envelope-open-text me-2"></i> <?php echo t('apply_leave'); ?></a>
-                <a href="parent_complaint.php" class="list-group-item text-danger"><i class="fas fa-frown me-2"></i> <?php echo t('parent_complaint'); ?></a>
             <?php endif; ?>
 
             <?php if(isset($_SESSION['user_id'])): ?>

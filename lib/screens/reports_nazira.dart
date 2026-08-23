@@ -239,10 +239,12 @@ class _ReportsNaziraPageState extends State<ReportsNaziraPage> {
   }
 
   Color getStatusColor(String? status) {
-    if (status == 'Excellent') return Colors.green;
-    if (status == 'Good') return Colors.blue;
-    if (status == 'Weak') return Colors.red;
-    if (status == 'Average') return Colors.orange;
+    if (status == 'Excellent' || status == 'ممتاز') return Colors.green;
+    if (status == 'Good' || status == 'بہتر') return Colors.blue;
+    if (status == 'Weak' || status == 'کمزور') return Colors.red;
+    if (status == 'Average' || status == 'معمولی') return Colors.orange;
+    if (status == 'غير حاضر' || status == 'Absent') return Colors.red.shade900;
+    if (status == 'رخصت' || status == 'Leave') return Colors.orange.shade800;
     return Colors.black;
   }
 

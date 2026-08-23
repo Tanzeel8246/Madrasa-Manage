@@ -553,6 +553,7 @@ $grand_total_p = 0; $grand_total_late = 0; $grand_total_a = 0; $grand_total_l = 
                             <th style="width: 25px;">#</th>
                             <th class="teacher-name-cell" style="width: <?php echo $teacherNameColWidth; ?>px; min-width: <?php echo $teacherNameColWidth; ?>px; text-align:right; padding-right:5px;">نام استاد</th>
                             <?php foreach($dates_array as $date_str): 
+                                $is_friday = (date('N', strtotime($date_str)) == 5);
                                 $g_day = (int)date('d', strtotime($date_str));
                                 $h_data = getHijriDateLoop($date_str, $hijri_offset); 
                                 $h_day = $h_data['d'];
@@ -608,6 +609,7 @@ $grand_total_p = 0; $grand_total_late = 0; $grand_total_a = 0; $grand_total_l = 
                             <td><?php echo $sr++; ?></td>
                             <td class="teacher-name-cell" style="width: <?php echo $teacherNameColWidth; ?>px; min-width: <?php echo $teacherNameColWidth; ?>px; text-align:right; padding-right:5px; font-weight:bold; font-size:10px;"><?php echo htmlspecialchars($row_name); ?></td>
                             <?php foreach($dates_array as $date_str): 
+                                $is_friday = (date('N', strtotime($date_str)) == 5);
                                 
                                 $has_any_att = isset($attendance_data[$t['id']][$t_class_id][$date_str]);
                                 $cell_html = '<div class="att-grid periods-'.count($assigned_periods).'">';

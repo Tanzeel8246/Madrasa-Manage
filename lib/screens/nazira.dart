@@ -148,17 +148,47 @@ class _NaziraPageState extends State<NaziraPage> {
         eveningStatus = r['evening_status']?.toString().isEmpty == true ? null : r['evening_status']?.toString();
       });
     } else {
-      setState(() {
-        morningSabaq = null;
-        _morningQtyController.clear();
-        morningTime = null;
-        morningStatus = null;
-        
-        eveningSabaq = null;
-        _eveningQtyController.clear();
-        eveningTime = null;
-        eveningStatus = null;
-      });
+      final attRows = await db.query('attendance',
+          where: 'student_id = ? AND (date = ? OR date = ?)',
+          whereArgs: [selectedStudent, d, normalizedD]);
+      String attStatus = '';
+      if (attRows.isNotEmpty) {
+        String s1 = (attRows.first['status_1'] ?? attRows.first['status'] ?? '').toString().toUpperCase();
+        String s2 = (attRows.first['status_2'] ?? '').toString().toUpperCase();
+        if (s1 == 'A' || s2 == 'A' || s1.contains('غائب')) {
+          attStatus = 'A';
+        } else if (s1 == 'L' || s2 == 'L' || s1.contains('رخصت')) {
+          attStatus = 'L';
+        }
+      }
+
+      if (attStatus == 'A') {
+        setState(() {
+          morningSabaq = 'غیر حاضر';
+          morningStatus = 'غیر حاضر';
+          eveningSabaq = 'غیر حاضر';
+          eveningStatus = 'غیر حاضر';
+        });
+      } else if (attStatus == 'L') {
+        setState(() {
+          morningSabaq = 'رخصت';
+          morningStatus = 'رخصت';
+          eveningSabaq = 'رخصت';
+          eveningStatus = 'رخصت';
+        });
+      } else {
+        setState(() {
+          morningSabaq = null;
+          _morningQtyController.clear();
+          morningTime = null;
+          morningStatus = null;
+          
+          eveningSabaq = null;
+          _eveningQtyController.clear();
+          eveningTime = null;
+          eveningStatus = null;
+        });
+      }
     }
   }
 

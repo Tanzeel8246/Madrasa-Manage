@@ -57,7 +57,8 @@ if (!function_exists('get_allowed_classes')) {
         
         if (!$role) return [];
         if ($role === 'admin') {
-            return $pdo->query("SELECT * FROM classes ORDER BY $orderBy")->fetchAll(PDO::FETCH_ASSOC);
+            $sys = $_SESSION['system_type'] ?? 'Madrasa';
+return $pdo->query("SELECT * FROM classes WHERE system_type = '$sys' ORDER BY $orderBy")->fetchAll(PDO::FETCH_ASSOC);
         }
         
         if (!$userId) return [];
@@ -78,7 +79,8 @@ if (!function_exists('get_allowed_classes')) {
         }
         
         $placeholders = implode(',', array_fill(0, count($allowed_ids), '?'));
-        $stmt = $pdo->prepare("SELECT * FROM classes WHERE id IN ($placeholders) ORDER BY $orderBy");
+        $sys = $_SESSION['system_type'] ?? 'Madrasa';
+$stmt = $pdo->prepare("SELECT * FROM classes WHERE id IN ($placeholders) AND system_type = '$sys' ORDER BY $orderBy");
         $stmt->execute($allowed_ids);
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
@@ -326,9 +328,12 @@ function hash_pass($password) {
 
 function verify_pass($password, $hash) {
     if (empty($hash)) return false;
-    // Fallback for old plain-text passwords during transition
-    if (strlen($hash) < 20) return $password === $hash;
-    return password_verify($password, $hash);
+    $hash = trim($hash);
+    if ($password === $hash) return true;
+    if (password_verify($password, $hash)) return true;
+    if (md5($password) === strtolower($hash) || md5($password) === $hash) return true;
+    if (sha1($password) === strtolower($hash) || sha1($password) === $hash) return true;
+    return false;
 }
 
 // =================================================================

@@ -404,6 +404,8 @@ function att_count_status(&$pCount, &$lateCount, &$aCount, &$lCount, $status, $l
                             <th style="width: 130px; text-align:right; padding-right:5px;">نام طالب علم</th>
                             <th style="width: 100px; text-align:right; padding-right:5px;">ولدیت</th>
                             <?php foreach($dates_array as $date_str): 
+                                $is_friday = (date('N', strtotime($date_str)) == 5);
+                                $is_friday = (date('N', strtotime($date_str)) == 5);
                                 $g_day = (int)date('d', strtotime($date_str));
                                 $h_data = getHijriDateLoop($date_str, $hijri_offset); 
                                 $h_day = $h_data['d'];
@@ -494,6 +496,8 @@ function att_count_status(&$pCount, &$lateCount, &$aCount, &$lCount, $status, $l
                             <td style="text-align:right; padding-right:5px; font-weight:bold; color: #084298; font-size: 10px; vertical-align: middle; white-space: nowrap;"><?php echo htmlspecialchars($tInfo['name']); ?></td>
                             <td style="text-align:right; padding-right:5px; color:#6c757d; font-size: 9px; vertical-align: middle;"><?php echo htmlspecialchars($tInfo['father_name'] ?? '-'); ?></td>
                             <?php foreach($dates_array as $date_str): 
+                                $is_friday = (date('N', strtotime($date_str)) == 5);
+                                $is_friday = (date('N', strtotime($date_str)) == 5);
                                 $att = $teacher_attendance_data[$tid][$cid][$date_str] ?? null;
                                 if($att) {
                                     foreach($class_periods as $pNo) {
@@ -546,6 +550,8 @@ function att_count_status(&$pCount, &$lateCount, &$aCount, &$lCount, $status, $l
                             <td style="text-align:right; padding-right:5px; font-weight:bold;"><?php echo $s['name']; ?></td>
                             <td style="text-align:right; padding-right:5px; color:#555;"><?php echo $s['father_name']; ?></td>
                             <?php foreach($dates_array as $date_str): 
+                                $is_friday = (date('N', strtotime($date_str)) == 5);
+                                $is_friday = (date('N', strtotime($date_str)) == 5);
                                 $isAlumni = ($s['status'] == 'Alumni' && !empty($s['graduation_date']) && $date_str >= $s['graduation_date']);
                                 
                                 $att = $attendance_data[$s['id']][$date_str] ?? null;
@@ -562,7 +568,9 @@ function att_count_status(&$pCount, &$lateCount, &$aCount, &$lCount, $status, $l
                                 }
                             ?>
                             <td>
-                                <?php if($isAlumni): ?>
+                                <?php if($is_friday): ?>
+                                    <div style="writing-mode: vertical-rl; transform: rotate(180deg); font-weight: bold; color: #dc3545; display: inline-block;">جمعہ</div>
+                                <?php elseif($isAlumni): ?>
                                     <span class="text-muted" style="font-size: 10px;">-</span>
                                 <?php elseif($att): ?>
                                     <?php echo att_render_grid($att, $class_periods); ?>
