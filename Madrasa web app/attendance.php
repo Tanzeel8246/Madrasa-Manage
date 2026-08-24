@@ -417,7 +417,8 @@ if ($can_teacher_attendance && $class_id && $selected_period) {
 // Fetch students
 $students = [];
 if ($selected_class && $selected_period) {
-    $query = "SELECT * FROM students WHERE (LOWER(status)='active' OR LOWER(status)='present' OR status='') AND is_deleted=0 AND class = ? ORDER BY admission_number ASC";
+    $sys = $_SESSION['system_type'] ?? 'Madrasa';
+$query = "SELECT * FROM students WHERE system_type = '$sys' AND (LOWER(status)='active' OR LOWER(status)='present' OR status='') AND is_deleted=0 AND class = ? ORDER BY admission_number ASC";
     $stmt = $pdo->prepare($query);
     $stmt->execute([$selected_class]);
     $students = $stmt->fetchAll();

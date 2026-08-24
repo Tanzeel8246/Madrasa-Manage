@@ -41,6 +41,15 @@ function teacher_class_kind($class) {
 }
 
 function teacher_period_labels($class) {
+    $sys = $_SESSION['system_type'] ?? 'Madrasa';
+    if ($sys === 'Masjid') {
+        return [
+            '1' => teacher_u('\u0635\u0628\u062d \u06a9\u0627 \u0633\u06cc\u0634\u0646 (Morning Shift)'),
+            '2' => teacher_u('\u062f\u0648\u067e\u06c1\u0631 \u06a9\u0627 \u0633\u06cc\u0634\u0646 (Noon Shift)'),
+            '3' => teacher_u('\u0639\u0635\u0631 / \u0634\u0627\u0645 \u06a9\u0627 \u0633\u06cc\u0634\u0646 (Evening Shift)'),
+            '4' => teacher_u('\u0645\u063a\u0631\u0628 / \u0639\u0634\u0627\u0621 \u06a9\u0627 \u0633\u06cc\u0634\u0646 (Night Shift)')
+        ];
+    }
     $kind = teacher_class_kind($class);
     if ($kind === 'hifz') {
         return [
@@ -90,6 +99,16 @@ function teacher_period_key_for_class($class, $period_no) {
 }
 
 function teacher_period_label_by_key($key) {
+    $sys = $_SESSION['system_type'] ?? 'Madrasa';
+    if ($sys === 'Masjid') {
+        $masjid_labels = [
+            '1' => teacher_u('\u0635\u0628\u062d \u06a9\u0627 \u0633\u06cc\u0634\u0646'),
+            '2' => teacher_u('\u062f\u0648\u067e\u06c1\u0631 \u06a9\u0627 \u0633\u06cc\u0634\u0646'),
+            '3' => teacher_u('\u0639\u0635\u0631 / \u0634\u0627\u0645 \u06a9\u0627 \u0633\u06cc\u0634\u0646'),
+            '4' => teacher_u('\u0645\u063a\u0631\u0628 / \u0639\u0634\u0627\u0621 \u06a9\u0627 \u0633\u06cc\u0634\u0646')
+        ];
+        if (isset($masjid_labels[(string)$key])) return $masjid_labels[(string)$key];
+    }
     $labels = [
         'hifz_morning' => teacher_u('\u0635\u0628\u062d'),
         'hifz_after_breakfast' => teacher_u('\u0646\u0627\u0634\u062a\u06c1 \u06a9\u06d2 \u0628\u0639\u062f'),
@@ -163,9 +182,10 @@ if (isset($_POST['save_teacher'])) {
         } 
         // ورنہ نیا ریکارڈ ڈالیں
         else {
-            $sql = "INSERT INTO teachers (name, father_name, phone, cnic, qualification, address, salary, house_rent, medical_allowance, travel_allowance, daily_deduction_rate, joining_date, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            $sys = $_SESSION['system_type'] ?? 'Madrasa';
+            $sql = "INSERT INTO teachers (name, father_name, phone, cnic, qualification, address, salary, house_rent, medical_allowance, travel_allowance, daily_deduction_rate, joining_date, status, system_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
             $stmt = $pdo->prepare($sql);
-            $stmt->execute([$name, $fname, $phone, $cnic, $qual, $addr, $salary, $house_rent, $medical_allowance, $travel_allowance, $daily_deduction_rate, $j_date, $status]);
+            $stmt->execute([$name, $fname, $phone, $cnic, $qual, $addr, $salary, $house_rent, $medical_allowance, $travel_allowance, $daily_deduction_rate, $j_date, $status, $sys]);
             $teacher_id = $pdo->lastInsertId();
             $msg = "<div class='alert alert-success fw-bold'>✅ نیا استاد شامل کر لیا گیا!</div>";
         }
@@ -294,7 +314,8 @@ if (isset($_GET['delete'])) {
 }
 
 // --- ڈیٹا لائیں ---
-$teachers = $pdo->query("SELECT * FROM teachers WHERE (is_deleted = 0 OR is_deleted IS NULL) ORDER BY status ASC, name ASC")->fetchAll();
+$sys = $_SESSION['system_type'] ?? 'Madrasa';
+$teachers = $pdo->query("SELECT * FROM teachers WHERE system_type = '$sys' AND (is_deleted = 0 OR is_deleted IS NULL) ORDER BY status ASC, name ASC")->fetchAll();
 
 // --- ایڈٹ موڈ ---
 $edit_data = null;
@@ -336,7 +357,8 @@ if (isset($_GET['edit'])) {
 }
 
 try {
-    $classes_list = $pdo->query("SELECT * FROM classes ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
+    $sys = $_SESSION['system_type'] ?? 'Madrasa';
+    $classes_list = $pdo->query("SELECT * FROM classes WHERE (system_type = '$sys' OR system_type IS NULL OR system_type = '') ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
 } catch (PDOException $e) {
     $classes_list = [];
 }
@@ -441,7 +463,7 @@ if ($edit_data && !empty($classes_list)) {
                     </div>
                     
                     <div class="col-12 mt-3">
-                        <label class="fw-bold mb-2">کلاس اور پیریڈز کی تقرری</label>
+                        <label class="fw-bold mb-2"><?php echo ($sys === 'Masjid') ? 'مکتب کلاس اور سیشنز کی تقرری (Maktab Quranic Shifts Assignment)' : 'کلاس اور پیریڈز کی تقرری'; ?></label>
                         <div class="accordion" id="accordionClasses">
                             <?php foreach($classes_list as $c): 
                                 $is_hifz = (($c['class_type'] ?? '') === 'Hifz/Nazira');

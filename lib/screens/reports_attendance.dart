@@ -583,10 +583,11 @@ class _ReportsAttendancePageState extends State<ReportsAttendancePage> {
     pw.Font ttf,
   ) {
     final classRows = teacherAttData[className];
-    final teacherIds = <String>{
+    final rawTeacherIds = <String>{
       ...(assignedTeacherIdsByClass[className] ?? <String>{}),
       ...(classRows?.keys ?? <String>{}),
     };
+    final teacherIds = rawTeacherIds.where((tid) => teacherNameById.containsKey(tid)).toSet();
     if (teacherIds.isEmpty) return const [];
 
     return teacherIds.map((teacherId) {
@@ -1210,10 +1211,11 @@ class _ReportsAttendancePageState extends State<ReportsAttendancePage> {
   List<Widget> _buildTeacherReportRows(
       String className, List<DateTime> reportDates) {
     final classRows = teacherAttData[className];
-    final teacherIds = <String>{
+    final rawTeacherIds = <String>{
       ...(assignedTeacherIdsByClass[className] ?? <String>{}),
       ...(classRows?.keys ?? <String>{}),
     };
+    final teacherIds = rawTeacherIds.where((tid) => teacherNameById.containsKey(tid)).toSet();
     if (teacherIds.isEmpty) return const [];
 
     return teacherIds.map((teacherId) {

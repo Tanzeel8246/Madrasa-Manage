@@ -5,6 +5,7 @@ import '../widgets/app_drawer.dart';
 import '../widgets/neo_box.dart';
 import '../db_helper.dart';
 import '../utils/sync_service.dart';
+import '../utils/system_type_global.dart';
 import '../utils/teacher_period_utils.dart';
 import 'dashboard.dart';
 import 'package:intl/intl.dart' as intl;
@@ -239,8 +240,17 @@ class _AttendancePageState extends State<AttendancePage>
     }
     if (isNazira) {
       return const [
-        _AttendancePeriod(1, 'Morning', 'صبح', 'Morning'),
-        _AttendancePeriod(2, 'Evening', 'شام', 'Evening'),
+        _AttendancePeriod(1, 'Morning', 'صبح کا سیشن', 'Morning Shift'),
+        _AttendancePeriod(2, 'Evening', 'شام کا سیشن', 'Evening Shift'),
+      ];
+    }
+    if (SystemTypeGlobal.currentSystemType.value == 'Masjid' || isHifz) {
+      return const [
+        _AttendancePeriod(1, 'Morning', 'صبح کا سیشن', 'Morning Shift'),
+        _AttendancePeriod(
+            2, 'AfterBreakfast', 'دوپہر کا سیشن', 'Noon Shift'),
+        _AttendancePeriod(3, 'Noon', 'عصر / شام کا سیشن', 'Evening Shift'),
+        _AttendancePeriod(4, 'Evening', 'مغرب / عشاء کا سیشن', 'Night Shift'),
       ];
     }
     return const [

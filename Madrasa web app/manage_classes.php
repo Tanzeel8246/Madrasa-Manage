@@ -6,6 +6,7 @@ try { $pdo->exec("ALTER TABLE classes ADD COLUMN class_type VARCHAR(50) DEFAULT 
 try { $pdo->exec("ALTER TABLE classes ADD COLUMN main_teacher_id INT NULL"); } catch (PDOException $e) {}
 try { $pdo->exec("ALTER TABLE classes ADD COLUMN main_teacher_ids JSON NULL"); } catch (PDOException $e) {}
 try { $pdo->exec("ALTER TABLE classes ADD COLUMN section VARCHAR(50) DEFAULT NULL"); } catch (PDOException $e) {}
+try { $pdo->exec("ALTER TABLE classes ADD COLUMN system_type VARCHAR(50) DEFAULT 'Madrasa'"); } catch (PDOException $e) {}
 try {
     $pdo->exec("CREATE TABLE IF NOT EXISTS class_periods (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -17,6 +18,23 @@ try {
         FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 } catch (PDOException $e) {}
+
+// Auto-seed 4 Quranic classes for Masjid if empty
+try {
+    $masjid_classes_count = $pdo->query("SELECT COUNT(*) FROM classes WHERE system_type = 'Masjid'")->fetchColumn();
+    if ($masjid_classes_count == 0) {
+        $quran_classes = [
+            ['name' => 'حفظ', 'class_type' => 'Hifz/Gardan/Husn'],
+            ['name' => 'ناظرہ', 'class_type' => 'Nazira'],
+            ['name' => 'قاعدہ', 'class_type' => 'Qaida'],
+            ['name' => 'حسنِ صوت', 'class_type' => 'Hifz/Gardan/Husn']
+        ];
+        $stmt_seed = $pdo->prepare("INSERT INTO classes (name, class_type, system_type) VALUES (?, ?, 'Masjid')");
+        foreach ($quran_classes as $qc) {
+            $stmt_seed->execute([$qc['name'], $qc['class_type']]);
+        }
+    }
+} catch (Exception $e) {}
 
 // کلاس حذف کرنا 
 if (isset($_GET['delete'])) {
@@ -38,8 +56,9 @@ if (isset($_POST['add_class'])) {
     
     if (!empty($name)) {
         try {
-            $stmt = $pdo->prepare("INSERT INTO classes (name, section, class_type, main_teacher_ids, subjects_list) VALUES (?, ?, ?, ?, ?)");
-            $stmt->execute([$name, $section, $class_type, $main_teacher_ids, $subjects_list]);
+            $sys = $_SESSION['system_type'] ?? 'Madrasa';
+            $stmt = $pdo->prepare("INSERT INTO classes (name, section, class_type, main_teacher_ids, subjects_list, system_type) VALUES (?, ?, ?, ?, ?, ?)");
+            $stmt->execute([$name, $section, $class_type, $main_teacher_ids, $subjects_list, $sys]);
             $class_id = $pdo->lastInsertId();
 
             // Always save periods for all classes
@@ -84,7 +103,8 @@ if (isset($_POST['update_class'])) {
     }
 }
 
-$classes = $pdo->query("SELECT * FROM classes ORDER BY id ASC")->fetchAll(PDO::FETCH_ASSOC);
+$sys = $_SESSION['system_type'] ?? 'Madrasa';
+$classes = $pdo->query("SELECT * FROM classes WHERE (system_type = '$sys' OR system_type IS NULL OR system_type = '') ORDER BY id ASC")->fetchAll(PDO::FETCH_ASSOC);
 
 $periods_by_class = [];
 $periods_raw = $pdo->query("SELECT * FROM class_periods ORDER BY class_id, period_no")->fetchAll(PDO::FETCH_ASSOC);
@@ -92,7 +112,7 @@ foreach ($periods_raw as $pr) {
     $periods_by_class[$pr['class_id']][$pr['period_no']] = $pr;
 }
 
-$teachers = $pdo->query("SELECT id, name FROM teachers WHERE (is_deleted = 0 OR is_deleted IS NULL) AND (status = 'Active' OR status = '' OR status IS NULL) ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
+$teachers = $pdo->query("SELECT id, name FROM teachers WHERE (system_type = '$sys' OR system_type IS NULL OR system_type = '') AND (is_deleted = 0 OR is_deleted IS NULL) AND (status = 'Active' OR status = '' OR status IS NULL) ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
 
 $teacher_map = [];
 foreach($teachers as $t) {
@@ -102,17 +122,19 @@ foreach($teachers as $t) {
 
 <div class="container-fluid mt-3">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2 class="fw-bold text-primary">کلاسز مینجمنٹ (Manage Classes)</h2>
+        <h2 class="fw-bold text-primary">
+            <?php echo ($sys === 'Masjid') ? 'مکتب کلاسز مینجمنٹ (مسجد)' : 'کلاسز مینجمنٹ (مدرسہ)'; ?>
+        </h2>
     </div>
 
     <div class="row">
         <div class="col-md-4">
             <div class="neobox shadow-sm">
-                <h5 class="fw-bold mb-3"><?php echo t('add_new_class'); ?></h5>
+                <h5 class="fw-bold mb-3"><?php echo ($sys === 'Masjid') ? 'نئی مکتب کلاس شامل کریں' : t('add_new_class'); ?></h5>
                 <form method="POST">
                     <div class="mb-3">
                         <label class="form-label fw-bold"><?php echo t('class_name'); ?></label>
-                        <input type="text" name="class_name" class="form-control" placeholder="مثلاً: درجہ اولیٰ" required>
+                        <input type="text" name="class_name" class="form-control" placeholder="<?php echo ($sys === 'Masjid') ? 'مثلاً: حفظ، ناظرہ، قاعدہ، حسنِ صوت' : 'مثلاً: درجہ اولیٰ'; ?>" required>
                     </div>
 
                     <div class="mb-3">
@@ -123,43 +145,60 @@ foreach($teachers as $t) {
                     <div class="mb-3">
                         <label class="form-label fw-bold">کلاس کی قسم (Class Type)</label>
                         <select name="class_type" class="form-select class-type-select" required>
-                            <optgroup label="قرآن کریم">
+                            <?php if ($sys === 'Masjid'): ?>
                                 <option value="Hifz/Gardan/Husn">حفظ، گردان، حسن صوت</option>
                                 <option value="Nazira">ناظرہ</option>
-                                <option value="Qaida">نورانی قاعدہ / نماز حنفی</option>
+                                <option value="Qaida">نورانی قاعدہ</option>
                                 <option value="Tajweed">تجوید</option>
-                            </optgroup>
-                            <optgroup label="دیگر">
-                                <option value="Asri Taleem">عصری تعلیم</option>
-                                <option value="Darse Nizami">درس نظامی</option>
-                            </optgroup>
+                            <?php else: ?>
+                                <optgroup label="قرآن کریم">
+                                    <option value="Hifz/Gardan/Husn">حفظ، گردان، حسن صوت</option>
+                                    <option value="Nazira">ناظرہ</option>
+                                    <option value="Qaida">نورانی قاعدہ / نماز حنفی</option>
+                                    <option value="Tajweed">تجوید</option>
+                                </optgroup>
+                                <optgroup label="دیگر">
+                                    <option value="Asri Taleem">عصری تعلیم</option>
+                                    <option value="Darse Nizami">درس نظامی</option>
+                                </optgroup>
+                            <?php endif; ?>
                         </select>
                     </div>
 
                     <div class="hifz-section" style="display:none;">
                         <div class="mb-3">
-                            <label class="form-label fw-bold">اساتذہ (حفظ / ناظرہ)</label>
+                            <label class="form-label fw-bold">اساتذہ (<?php echo ($sys === 'Masjid') ? 'مکتب / مسجد اساتذہ' : 'حفظ / ناظرہ'; ?>)</label>
                             <select name="main_teacher_ids[]" class="form-select" multiple size="3">
                                 <?php foreach($teachers as $t): ?>
                                     <option value="<?= $t['id'] ?>"><?= htmlspecialchars($t['name']) ?></option>
                                 <?php endforeach; ?>
                             </select>
                             <small class="text-muted d-block mt-1">ایک سے زیادہ اساتذہ منتخب کرنے کے لیے Ctrl/Cmd دبائے رکھیں۔</small>
-                            <small class="text-muted d-block mt-1">حفظ/ناظرہ کلاس کا شیڈول (سبق، سبقی، منزل) خودکار طور پر ہوتا ہے۔</small>
                         </div>
                     </div>
 
                     <div class="darse-nizami-section">
-                        <label class="form-label fw-bold mb-2">پیریڈز کی تفصیل (8 Periods)</label>
-                        <?php for($i=1; $i<=8; $i++): ?>
-                            <div class="border p-2 mb-2 rounded bg-light">
-                                <div class="fw-bold text-secondary mb-1" style="font-size: 0.85rem;">Period <?= $i ?>
-                                    <?php if($i == 7) echo '<span class="badge bg-secondary ms-1">مطالعہ</span>'; ?>
-                                    <?php if($i == 8) echo '<span class="badge bg-secondary ms-1">تکرار</span>'; ?>
+                        <label class="form-label fw-bold mb-2">
+                            <?php echo ($sys === 'Masjid') ? 'مکتب سیشنز / پیریڈز کنفیگریشن' : 'پیریڈز کی تفصیل (8 Periods)'; ?>
+                        </label>
+                        <?php 
+                        $max_p = ($sys === 'Masjid') ? 4 : 8;
+                        $period_names_masjid = [
+                            1 => 'صبح کا سیشن (Morning Shift)',
+                            2 => 'ناشتہ / دوپہر کا سیشن (Noon Shift)',
+                            3 => 'عصر / شام کا سیشن (Evening Shift)',
+                            4 => 'مغرب / عشاء کا سیشن (Night Shift)'
+                        ];
+                        for($i=1; $i<=$max_p; $i++): ?>
+                            <div class="border p-2 mb-2 rounded bg-light period-block" data-period="<?= $i ?>">
+                                <div class="fw-bold text-secondary mb-1 period-label" style="font-size: 0.85rem;">
+                                    <?php echo ($sys === 'Masjid') ? $period_names_masjid[$i] : ("Period " . $i); ?>
+                                    <?php if($sys !== 'Masjid' && $i == 7) echo '<span class="badge bg-secondary ms-1">مطالعہ</span>'; ?>
+                                    <?php if($sys !== 'Masjid' && $i == 8) echo '<span class="badge bg-secondary ms-1">تکرار</span>'; ?>
                                 </div>
                                 <div class="row g-2">
                                     <div class="col-12 col-md-6">
-                                        <input type="text" name="period_books[<?= $i ?>]" class="form-control form-control-sm" placeholder="کتاب (مثلاً بخاری)<?= ($i==7)?' / مطالعہ':(($i==8)?' / تکرار':'') ?>">
+                                        <input type="text" name="period_books[<?= $i ?>]" class="form-control form-control-sm" placeholder="<?php echo ($sys === 'Masjid') ? 'سیشن مضمون / کتاب (مثلاً ناظرہ)' : 'کتاب (مثلاً بخاری)'; ?>">
                                     </div>
                                     <div class="col-12 col-md-6">
                                         <select name="period_teacher[<?= $i ?>][]" class="form-select form-select-sm" multiple size="3" style="height: 60px;">
@@ -176,7 +215,7 @@ foreach($teachers as $t) {
 
                     <div class="mb-3 mt-3">
                         <label class="form-label fw-bold">دیگر مضامین اور کل نمبر (اختياری)</label>
-                        <textarea name="subjects_list" class="form-control" rows="2" placeholder="مثلاً: قرآن:100, ریاضی:50"></textarea>
+                        <textarea name="subjects_list" class="form-control" rows="2" placeholder="مثلاً: قرآن:100, دینیات:50"></textarea>
                     </div>
                     <button type="submit" name="add_class" class="btn btn-primary w-100 fw-bold">شامل کریں</button>
                 </form>
@@ -271,23 +310,30 @@ foreach($teachers as $t) {
                     <div class="col-md-4 mb-3">
                         <label class="form-label fw-bold">کلاس کی قسم</label>
                         <select name="class_type" class="form-select class-type-select" required>
-                            <optgroup label="قرآن کریم">
+                            <?php if ($sys === 'Masjid'): ?>
                                 <option value="Hifz/Gardan/Husn" <?= in_array(($c['class_type'] ?? ''), ['Hifz/Gardan/Husn', 'Hifz/Nazira']) ? 'selected' : '' ?>>حفظ، گردان، حسن صوت</option>
                                 <option value="Nazira" <?= ($c['class_type'] ?? '') === 'Nazira' ? 'selected' : '' ?>>ناظرہ</option>
-                                <option value="Qaida" <?= ($c['class_type'] ?? '') === 'Qaida' ? 'selected' : '' ?>>نورانی قاعدہ / نماز حنفی</option>
+                                <option value="Qaida" <?= ($c['class_type'] ?? '') === 'Qaida' ? 'selected' : '' ?>>نورانی قاعدہ</option>
                                 <option value="Tajweed" <?= ($c['class_type'] ?? '') === 'Tajweed' ? 'selected' : '' ?>>تجوید</option>
-                            </optgroup>
-                            <optgroup label="دیگر">
-                                <option value="Asri Taleem" <?= ($c['class_type'] ?? '') === 'Asri Taleem' ? 'selected' : '' ?>>عصری تعلیم</option>
-                                <option value="Darse Nizami" <?= in_array(($c['class_type'] ?? ''), ['Darse Nizami', 'Darse Nizami / Other']) ? 'selected' : '' ?>>درس نظامی</option>
-                            </optgroup>
+                            <?php else: ?>
+                                <optgroup label="قرآن کریم">
+                                    <option value="Hifz/Gardan/Husn" <?= in_array(($c['class_type'] ?? ''), ['Hifz/Gardan/Husn', 'Hifz/Nazira']) ? 'selected' : '' ?>>حفظ، گردان، حسن صوت</option>
+                                    <option value="Nazira" <?= ($c['class_type'] ?? '') === 'Nazira' ? 'selected' : '' ?>>ناظرہ</option>
+                                    <option value="Qaida" <?= ($c['class_type'] ?? '') === 'Qaida' ? 'selected' : '' ?>>نورانی قاعدہ / نماز حنفی</option>
+                                    <option value="Tajweed" <?= ($c['class_type'] ?? '') === 'Tajweed' ? 'selected' : '' ?>>تجوید</option>
+                                </optgroup>
+                                <optgroup label="دیگر">
+                                    <option value="Asri Taleem" <?= ($c['class_type'] ?? '') === 'Asri Taleem' ? 'selected' : '' ?>>عصری تعلیم</option>
+                                    <option value="Darse Nizami" <?= in_array(($c['class_type'] ?? ''), ['Darse Nizami', 'Darse Nizami / Other']) ? 'selected' : '' ?>>درس نظامی</option>
+                                </optgroup>
+                            <?php endif; ?>
                         </select>
                     </div>
                 </div>
 
                 <div class="hifz-section" style="display:none;">
                     <div class="mb-3">
-                        <label class="form-label fw-bold">اساتذہ (حفظ / ناظرہ)</label>
+                        <label class="form-label fw-bold">اساتذہ (<?php echo ($sys === 'Masjid') ? 'مکتب / مسجد اساتذہ' : 'حفظ / ناظرہ'; ?>)</label>
                         <select name="main_teacher_ids[]" class="form-select" multiple size="3">
                             <?php 
                             $selected_mt = json_decode($c['main_teacher_ids'] ?? '[]', true) ?: [];
@@ -296,24 +342,28 @@ foreach($teachers as $t) {
                             <?php endforeach; ?>
                         </select>
                         <small class="text-muted d-block mt-1">ایک سے زیادہ اساتذہ منتخب کرنے کے لیے Ctrl/Cmd دبائے رکھیں۔</small>
-                        <small class="text-muted d-block mt-1">حفظ/ناظرہ کلاس کا شیڈول (سبق، سبقی، منزل) خودکار طور پر ہوتا ہے۔</small>
                     </div>
                 </div>
 
                 <div class="darse-nizami-section">
-                    <label class="form-label fw-bold mb-2">پیریڈز کی تفصیل (8 Periods)</label>
+                    <label class="form-label fw-bold mb-2">
+                        <?php echo ($sys === 'Masjid') ? 'مکتب سیشنز / پیریڈز کنفیگریشن' : 'پیریڈز کی تفصیل (8 Periods)'; ?>
+                    </label>
                     <div class="row g-2">
-                    <?php for($i=1; $i<=8; $i++): 
+                    <?php 
+                    $max_p_edit = ($sys === 'Masjid') ? 4 : 8;
+                    for($i=1; $i<=$max_p_edit; $i++): 
                         $p_book = $periods_by_class[$c['id']][$i]['books'] ?? '';
                         $p_teacher_ids = json_decode($periods_by_class[$c['id']][$i]['teacher_ids'] ?? '[]', true) ?: [];
                     ?>
-                        <div class="col-md-6">
+                        <div class="col-md-6 period-block" data-period="<?= $i ?>">
                             <div class="border p-2 rounded bg-light h-100">
-                                <div class="fw-bold text-secondary mb-1" style="font-size: 0.85rem;">Period <?= $i ?>
-                                    <?php if($i == 7) echo '<span class="badge bg-secondary ms-1">مطالعہ</span>'; ?>
-                                    <?php if($i == 8) echo '<span class="badge bg-secondary ms-1">تکرار</span>'; ?>
+                                <div class="fw-bold text-secondary mb-1 period-label" style="font-size: 0.85rem;">
+                                    <?php echo ($sys === 'Masjid') ? $period_names_masjid[$i] : ("Period " . $i); ?>
+                                    <?php if($sys !== 'Masjid' && $i == 7) echo '<span class="badge bg-secondary ms-1">مطالعہ</span>'; ?>
+                                    <?php if($sys !== 'Masjid' && $i == 8) echo '<span class="badge bg-secondary ms-1">تکرار</span>'; ?>
                                 </div>
-                                <input type="text" name="period_books[<?= $i ?>]" class="form-control form-control-sm mb-2" placeholder="کتاب (Books)<?= ($i==7)?' / مطالعہ':(($i==8)?' / تکرار':'') ?>" value="<?= htmlspecialchars($p_book) ?>">
+                                <input type="text" name="period_books[<?= $i ?>]" class="form-control form-control-sm mb-2" placeholder="<?php echo ($sys === 'Masjid') ? 'سیشن مضمون / کتاب' : 'کتاب (Books)'; ?>" value="<?= htmlspecialchars($p_book) ?>">
                                 <select name="period_teacher[<?= $i ?>][]" class="form-select form-select-sm" multiple size="3" style="height: 60px;">
                                     <?php foreach($teachers as $t): ?>
                                         <option value="<?= $t['id'] ?>" <?= in_array($t['id'], $p_teacher_ids) ? 'selected' : '' ?>><?= htmlspecialchars($t['name']) ?></option>
@@ -347,13 +397,42 @@ document.addEventListener('DOMContentLoaded', function() {
         var form = selectElement.closest('form');
         var hifzSection = form.querySelector('.hifz-section');
         var darseSection = form.querySelector('.darse-nizami-section');
-        if(val === 'Hifz/Gardan/Husn' || val === 'Nazira' || val === 'Hifz/Nazira') {
+
+        if(val === 'Hifz/Gardan/Husn' || val === 'Hifz' || val === 'Hifz/Nazira') {
             if(hifzSection) hifzSection.style.display = 'block';
-            if(darseSection) darseSection.style.display = 'block'; // Always show periods so they can assign period-specific teachers
         } else {
             if(hifzSection) hifzSection.style.display = 'none';
-            if(darseSection) darseSection.style.display = 'block';
         }
+        if(darseSection) darseSection.style.display = 'block';
+
+        // Dynamic Shift / Period Filtering (Nazira = 2 shifts, Hifz/Qaida/Tajweed = 4 shifts)
+        var isMasjid = <?php echo ($sys === 'Masjid') ? 'true' : 'false'; ?>;
+        var periodBlocks = form.querySelectorAll('.period-block');
+        periodBlocks.forEach(function(block) {
+            var pNum = parseInt(block.getAttribute('data-period'));
+            var labelEl = block.querySelector('.period-label');
+            if (isMasjid) {
+                if (val === 'Nazira') {
+                    if (pNum === 1) {
+                        block.style.display = '';
+                        if (labelEl) labelEl.textContent = 'صبح کا سیشن (Morning Shift)';
+                    } else if (pNum === 2) {
+                        block.style.display = '';
+                        if (labelEl) labelEl.textContent = 'شام کا سیشن (Evening Shift)';
+                    } else {
+                        block.style.display = 'none';
+                    }
+                } else {
+                    block.style.display = '';
+                    if (pNum === 1 && labelEl) labelEl.textContent = 'صبح کا سیشن (Morning Shift)';
+                    if (pNum === 2 && labelEl) labelEl.textContent = 'ناشتہ / دوپہر کا سیشن (Noon Shift)';
+                    if (pNum === 3 && labelEl) labelEl.textContent = 'عصر / شام کا سیشن (Evening Shift)';
+                    if (pNum === 4 && labelEl) labelEl.textContent = 'مغرب / عشاء کا سیشن (Night Shift)';
+                }
+            } else {
+                block.style.display = '';
+            }
+        });
     }
 
     var selects = document.querySelectorAll('.class-type-select');

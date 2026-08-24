@@ -61,7 +61,7 @@ class _HifzPageState extends State<HifzPage> {
     ...List.generate(30, (index) => (index + 1).toString()),
   ];
 
-  final List<String> grades = ["پختہ", "کچا", "ناقص", "رعایتی پاس"];
+  final List<String> grades = ["پختہ", "کچا", "ناقص", "رعایتی پاس", "ناغہ", "غیر حاضر", "رخصت"];
   final List<double> sabqiTargetOptions = [
     0.0,
     0.25,
@@ -326,23 +326,55 @@ class _HifzPageState extends State<HifzPage> {
         }
       });
     } else {
-      setState(() {
-        sabaqPara = null;
-        sabaqLinesController.clear();
-        sabaqGrade = null;
-        isSabqiJaiza = false;
-        _targetSabqiQty = 0.0;
-        sabqiDetails.clear();
-        sabqiGrade = null;
-        sabqiListenerController.clear();
-        sabqiListenerJaiza = false;
-        isManzilJaiza = false;
-        _targetManzilQty = 0.0;
-        manzilDetails.clear();
-        manzilGrade = null;
-        manzilListenerController.clear();
-        manzilListenerJaiza = false;
-      });
+      final attRows = await db.query('attendance',
+          where: 'student_id = ? AND (date = ? OR date = ?)',
+          whereArgs: [selectedStudent, d, normalizedD]);
+      String attStatus = '';
+      if (attRows.isNotEmpty) {
+        String s1 = (attRows.first['status_1'] ?? attRows.first['status'] ?? '').toString().toUpperCase();
+        String s2 = (attRows.first['status_2'] ?? '').toString().toUpperCase();
+        if (s1 == 'A' || s2 == 'A' || s1.contains('غائب')) {
+          attStatus = 'A';
+        } else if (s1 == 'L' || s2 == 'L' || s1.contains('رخصت')) {
+          attStatus = 'L';
+        }
+      }
+
+      if (attStatus == 'A') {
+        setState(() {
+          sabaqPara = 'غیر حاضر';
+          sabaqGrade = 'غیر حاضر';
+          sabqiGrade = 'غیر حاضر';
+          manzilGrade = 'غیر حاضر';
+          sabaqLinesController.text = 'غیر حاضر';
+        });
+      } else if (attStatus == 'L') {
+        setState(() {
+          sabaqPara = 'رخصت';
+          sabaqGrade = 'رخصت';
+          sabqiGrade = 'رخصت';
+          manzilGrade = 'رخصت';
+          sabaqLinesController.text = 'رخصت';
+        });
+      } else {
+        setState(() {
+          sabaqPara = null;
+          sabaqLinesController.clear();
+          sabaqGrade = null;
+          isSabqiJaiza = false;
+          _targetSabqiQty = 0.0;
+          sabqiDetails.clear();
+          sabqiGrade = null;
+          sabqiListenerController.clear();
+          sabqiListenerJaiza = false;
+          isManzilJaiza = false;
+          _targetManzilQty = 0.0;
+          manzilDetails.clear();
+          manzilGrade = null;
+          manzilListenerController.clear();
+          manzilListenerJaiza = false;
+        });
+      }
     }
   }
 

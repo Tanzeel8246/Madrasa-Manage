@@ -39,4 +39,3 @@ function madrasa_load_env($path = null) {
 }
 
 madrasa_load_env();
-?>
