@@ -51,6 +51,7 @@ if (isset($_POST['save_student'])) {
         $cls = $_POST['class'];
         $contact = $_POST['contact_number'];
         $addr = $_POST['address'];
+        $residence_status = $_POST['residence_status'] ?? '';
 
         // Photo Handling
         $photo_path = $_POST['old_photo'] ?? '';
@@ -76,11 +77,11 @@ if (isset($_POST['save_student'])) {
         
         // اپڈیٹ
         if(!empty($_POST['edit_id'])) {
-            $sql = "UPDATE students SET name=?, father_name=?, admission_number=?, class=?, contact_number=?, address=?, admission_date=?, graduation_date=?, duration=?, photo=? WHERE id=?";
+            $sql = "UPDATE students SET name=?, father_name=?, admission_number=?, class=?, contact_number=?, address=?, admission_date=?, graduation_date=?, duration=?, photo=?, residence_status=? WHERE id=?";
             $adm_date = !empty($_POST['admission_date']) ? $_POST['admission_date'] : null;
             $grad_date = !empty($_POST['graduation_date']) ? $_POST['graduation_date'] : null;
             $duration = !empty($_POST['duration']) ? $_POST['duration'] : null;
-            $pdo->prepare($sql)->execute([$name, $fname, $adm_no, $cls, $contact, $addr, $adm_date, $grad_date, $duration, $photo_path, $_POST['edit_id']]);
+            $pdo->prepare($sql)->execute([$name, $fname, $adm_no, $cls, $contact, $addr, $adm_date, $grad_date, $duration, $photo_path, $residence_status, $_POST['edit_id']]);
             $msg = "<div class='alert alert-success fw-bold'>✅ ریکارڈ اپڈیٹ ہو گیا!</div>";
         } 
         // نیا داخلہ
@@ -98,9 +99,8 @@ if (isset($_POST['save_student'])) {
             $s_no = isset($parts[1]) ? (int)$parts[1] : 0;
 
             $adm_date = !empty($_POST['admission_date']) ? $_POST['admission_date'] : date('Y-m-d');
-            $sys = $_SESSION['system_type'] ?? 'Madrasa';
-            $sql = "INSERT INTO students (name, father_name, admission_number, serial_no, hijri_year, class, contact_number, address, status, admission_date, photo, system_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Active', ?, ?, ?)";
-            $pdo->prepare($sql)->execute([$name, $fname, $adm_no, $s_no, $h_year, $cls, $contact, $addr, $adm_date, $photo_path, $sys]);
+            $sql = "INSERT INTO students (name, father_name, admission_number, serial_no, hijri_year, class, contact_number, address, status, admission_date, photo, residence_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Active', ?, ?, ?)";
+            $pdo->prepare($sql)->execute([$name, $fname, $adm_no, $s_no, $h_year, $cls, $contact, $addr, $adm_date, $photo_path, $residence_status]);
             $msg = "<div class='alert alert-success fw-bold'>✅ نیا طالب علم ایڈ ہو گیا!</div>";
         }
         echo "<script>window.location='students.php';</script>";
@@ -133,12 +133,11 @@ if (!$is_admin) {
 }
 
 if (!empty($_GET['class_filter'])) {
-    $stmt = $pdo->prepare("SELECT * FROM students WHERE status = 'Active' AND is_deleted = 0 AND system_type = '$sys' AND class = ? AND ($class_condition) ORDER BY admission_number DESC");
+    $stmt = $pdo->prepare("SELECT * FROM students WHERE status = 'Active' AND is_deleted = 0 AND class = ? AND ($class_condition) ORDER BY admission_number DESC");
     $stmt->execute([$_GET['class_filter']]);
     $active_students = $stmt->fetchAll();
 } else {
-    $sys = $_SESSION['system_type'] ?? 'Madrasa';
-$active_students = $pdo->query("SELECT * FROM students WHERE status = 'Active' AND is_deleted = 0 AND system_type = '$sys' AND ($class_condition) ORDER BY admission_number DESC")->fetchAll();
+    $active_students = $pdo->query("SELECT * FROM students WHERE status = 'Active' AND is_deleted = 0 AND ($class_condition) ORDER BY admission_number DESC")->fetchAll();
 }
 
 // Group active students by class
@@ -165,8 +164,7 @@ foreach (array_keys($grouped_students) as $c) {
 }
 
 // 2. فارغ التحصیل طلباء (Alumni)
-$sys = $_SESSION['system_type'] ?? 'Madrasa';
-$alumni_students = $pdo->query("SELECT * FROM students WHERE status = 'Alumni' AND is_deleted = 0 AND system_type = '$sys' AND ($class_condition) ORDER BY graduation_date DESC")->fetchAll();
+$alumni_students = $pdo->query("SELECT * FROM students WHERE status = 'Alumni' AND is_deleted = 0 AND ($class_condition) ORDER BY graduation_date DESC")->fetchAll();
 
 // --- ایڈٹ موڈ ---
 $edit_data = null;
@@ -243,6 +241,17 @@ if(isset($_GET['edit'])) {
                     </div>
                     
                     <div class="col-md-4">
+                        <label class="fw-bold">رہائشی حیثیت (Residential Status)</label>
+                        <select name="residence_status" class="form-control">
+                            <option value="">منتخب کریں</option>
+                            <option value="residential_aided" <?php echo (isset($edit_data['residence_status']) && $edit_data['residence_status'] == 'residential_aided') ? 'selected' : ''; ?>>اقامتی، امدادی</option>
+                            <option value="non_residential_non_aided" <?php echo (isset($edit_data['residence_status']) && $edit_data['residence_status'] == 'non_residential_non_aided') ? 'selected' : ''; ?>>غیر اقامتی، غیر امدادی</option>
+                            <option value="residential_non_aided" <?php echo (isset($edit_data['residence_status']) && $edit_data['residence_status'] == 'residential_non_aided') ? 'selected' : ''; ?>>اقامتی، غیر امدادی</option>
+                            <option value="non_residential_aided" <?php echo (isset($edit_data['residence_status']) && $edit_data['residence_status'] == 'non_residential_aided') ? 'selected' : ''; ?>>غیر اقامتی، امدادی</option>
+                        </select>
+                    </div>
+                    
+                    <div class="col-md-4">
                         <label class="fw-bold">رابطہ نمبر <span class="text-danger">*</span></label>
                         <input type="text" name="contact_number" id="s_contact" class="form-control" required placeholder="0300xxxxxxx" value="<?php echo $edit_data['contact_number']??''; ?>">
                     </div>
@@ -284,73 +293,105 @@ if(isset($_GET['edit'])) {
         </div>
     </div>
 
-    <?php if(empty($ordered_classes)): ?>
-        <div class="alert alert-info text-center fw-bold">کوئی موجودہ طالب علم نہیں</div>
-    <?php else: ?>
-        <?php foreach($ordered_classes as $cName): ?>
-            <div class="card shadow-sm border-0 mb-4 border-top border-3 border-primary">
-                <div class="card-header bg-light">
-                    <h5 class="m-0 fw-bold text-primary"><i class="fas fa-users me-2"></i> کلاس: <?php echo $cName; ?></h5>
-                </div>
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-bordered table-hover align-middle text-center m-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>نمبرشمار</th>
-                                    <th>رول نمبر</th>
-                                    <th><?php echo t('photo'); ?></th>
-                                    <th>نام طالب علم</th>
-                                    <th><?php echo t('father_name'); ?></th>
-                                    <th><?php echo t('contact'); ?></th>
-                                    <th style="width: 200px;"><?php echo t('action_col'); ?></th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php $serial_num = 1; foreach($grouped_students[$cName] as $s): ?>
-                                <tr>
-                                    <td class="fw-bold text-muted"><?php echo $serial_num++; ?></td>
-                                    <td class="fw-bold"><?php echo $s['admission_number']; ?></td>
-                                    <td>
-                                        <?php if(!empty($s['photo'])): ?>
-                                            <img src="<?php echo $s['photo']; ?>" class="rounded-circle" width="35" height="35" style="object-fit: cover;">
-                                        <?php else: ?>
-                                            <div class="bg-secondary text-white rounded-circle d-inline-block text-center" style="width:35px; height:35px; line-height:35px;"><i class="fas fa-user"></i></div>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td class="text-start ps-3 fw-bold"><?php echo e($s['name']); ?></td>
-                                    <td><?php echo e($s['father_name']); ?></td>
-                                    <td><?php echo e($s['contact_number']); ?></td>
-                                    <td>
-                                        <div class="btn-group shadow-sm">
-                                            <a href="print_form.php?id=<?php echo $s['id']; ?>" class="btn btn-sm btn-info text-white" title="فارم پرنٹ کریں" target="_blank">
-                                                <i class="fas fa-print"></i>
-                                            </a>
-                                            <a href="print_id_card.php?id=<?php echo $s['id']; ?>" class="btn btn-sm btn-success text-white" title="آئی ڈی کارڈ" target="_blank">
-                                                <i class="fas fa-id-card"></i>
-                                            </a>
-                                            <a href="students.php?edit=<?php echo $s['id']; ?>" class="btn btn-sm btn-primary" title="<?php echo t('btn_edit'); ?>"><i class="fas fa-edit"></i></a>
-                                            
-                                            <button type="button" class="btn btn-sm btn-dark text-warning" title="فارغ التحصیل کریں" onclick="openGraduateModal('<?php echo $s['id']; ?>', '<?php echo addslashes($s['name']); ?>', '<?php echo $s['admission_date']; ?>')">
-                                                <i class="fas fa-user-graduate"></i>
-                                            </button>
-
-                                            <button type="button" class="btn btn-sm btn-info text-white" title="پروموٹ کریں" onclick="openPromoteModal('<?php echo $s['id']; ?>', '<?php echo addslashes($s['name']); ?>')">
-                                                <i class="fas fa-level-up-alt"></i>
-                                            </button>
-
-                                            <a href="students.php?delete=<?php echo $s['id']; ?>" class="btn btn-sm btn-danger" title="ڈیلیٹ" onclick="return confirm('ریکارڈ ہمیشہ کے لیے ختم ہو جائے گا!')"><i class="fas fa-trash"></i></a>
-                                        </div>
-                                    </td>
-                                </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+    <?php 
+    $residence_tabs = [
+        'all' => 'تمام',
+        'residential_aided' => 'اقامتی، امدادی',
+        'non_residential_non_aided' => 'غیر اقامتی، غیر امدادی',
+        'residential_non_aided' => 'اقامتی، غیر امدادی',
+        'non_residential_aided' => 'غیر اقامتی، امدادی'
+    ];
+    ?>
+    <ul class="nav nav-tabs mb-4" id="residenceTabs" role="tablist">
+        <?php $tab_first = true; foreach($residence_tabs as $tab_key => $tab_label): ?>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link fw-bold <?php echo $tab_first ? 'active' : ''; ?>" id="<?php echo $tab_key; ?>-tab" data-bs-toggle="tab" data-bs-target="#<?php echo $tab_key; ?>" type="button" role="tab" aria-controls="<?php echo $tab_key; ?>" aria-selected="<?php echo $tab_first ? 'true' : 'false'; ?>"><?php echo $tab_label; ?></button>
+            </li>
+        <?php $tab_first = false; endforeach; ?>
+    </ul>
+    
+    <div class="tab-content" id="residenceTabsContent">
+        <?php $tab_first = true; foreach($residence_tabs as $tab_key => $tab_label): ?>
+            <div class="tab-pane fade <?php echo $tab_first ? 'show active' : ''; ?>" id="<?php echo $tab_key; ?>" role="tabpanel" aria-labelledby="<?php echo $tab_key; ?>-tab">
+                <?php if(empty($ordered_classes)): ?>
+                    <div class="alert alert-info text-center fw-bold">کوئی موجودہ طالب علم نہیں</div>
+                <?php else: ?>
+                    <?php foreach($ordered_classes as $cName): ?>
+                        <?php 
+                            // Filter students for this tab
+                            $tab_students = array_filter($grouped_students[$cName], function($s) use ($tab_key) {
+                                $s_status = $s['residence_status'] ?? '';
+                                if ($tab_key === 'all') return true;
+                                return $s_status === $tab_key;
+                            });
+                            if(empty($tab_students)) continue; // Skip if no students for this class in this tab
+                        ?>
+                        <div class="card shadow-sm border-0 mb-4 border-top border-3 border-primary">
+                            <div class="card-header bg-light">
+                                <h5 class="m-0 fw-bold text-primary"><i class="fas fa-users me-2"></i> کلاس: <?php echo $cName; ?></h5>
+                            </div>
+                            <div class="card-body p-0">
+                                <div class="table-responsive">
+                                    <table class="table table-bordered table-hover align-middle text-center m-0">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th>نمبرشمار</th>
+                                                <th>رول نمبر</th>
+                                                <th><?php echo t('photo'); ?></th>
+                                                <th>نام طالب علم</th>
+                                                <th><?php echo t('father_name'); ?></th>
+                                                <th><?php echo t('contact'); ?></th>
+                                                <th style="width: 200px;"><?php echo t('action_col'); ?></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <?php $serial_num = 1; foreach($tab_students as $s): ?>
+                                            <tr>
+                                                <td class="fw-bold text-muted"><?php echo $serial_num++; ?></td>
+                                                <td class="fw-bold"><?php echo $s['admission_number']; ?></td>
+                                                <td>
+                                                    <?php if(!empty($s['photo'])): ?>
+                                                        <img src="<?php echo $s['photo']; ?>" class="rounded-circle" width="35" height="35" style="object-fit: cover;">
+                                                    <?php else: ?>
+                                                        <div class="bg-secondary text-white rounded-circle d-inline-block text-center" style="width:35px; height:35px; line-height:35px;"><i class="fas fa-user"></i></div>
+                                                    <?php endif; ?>
+                                                </td>
+                                                <td class="text-start ps-3 fw-bold"><?php echo e($s['name']); ?></td>
+                                                <td><?php echo e($s['father_name']); ?></td>
+                                                <td><?php echo e($s['contact_number']); ?></td>
+                                                <td>
+                                                    <div class="btn-group shadow-sm">
+                                                        <a href="print_form.php?id=<?php echo $s['id']; ?>" class="btn btn-sm btn-info text-white" title="فارم پرنٹ کریں" target="_blank">
+                                                            <i class="fas fa-print"></i>
+                                                        </a>
+                                                        <a href="print_id_card.php?id=<?php echo $s['id']; ?>" class="btn btn-sm btn-success text-white" title="آئی ڈی کارڈ" target="_blank">
+                                                            <i class="fas fa-id-card"></i>
+                                                        </a>
+                                                        <a href="students.php?edit=<?php echo $s['id']; ?>" class="btn btn-sm btn-primary" title="<?php echo t('btn_edit'); ?>"><i class="fas fa-edit"></i></a>
+                                                        
+                                                        <button type="button" class="btn btn-sm btn-dark text-warning" title="فارغ التحصیل کریں" onclick="openGraduateModal('<?php echo $s['id']; ?>', '<?php echo addslashes($s['name']); ?>', '<?php echo $s['admission_date']; ?>')">
+                                                            <i class="fas fa-user-graduate"></i>
+                                                        </button>
+                                                        
+                                                        <button type="button" class="btn btn-sm btn-info text-white" title="پروموٹ کریں" onclick="openPromoteModal('<?php echo $s['id']; ?>', '<?php echo addslashes($s['name']); ?>')">
+                                                            <i class="fas fa-level-up-alt"></i>
+                                                        </button>
+                                                        
+                                                        <a href="students.php?delete=<?php echo $s['id']; ?>" class="btn btn-sm btn-danger" title="ڈیلیٹ" onclick="return confirm('ریکارڈ ہمیشہ کے لیے ختم ہو جائے گا!')"><i class="fas fa-trash"></i></a>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                            <?php endforeach; ?>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                <?php endif; ?>
             </div>
-        <?php endforeach; ?>
-    <?php endif; ?>
+        <?php $tab_first = false; endforeach; ?>
+    </div>
 
     <?php if(count($alumni_students) > 0): ?>
     <div class="card shadow-sm border-0 border-top border-5 border-secondary">

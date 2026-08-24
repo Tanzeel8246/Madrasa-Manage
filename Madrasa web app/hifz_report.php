@@ -289,7 +289,7 @@ function applyHifzPeriodDates(val) {
                 foreach ($att_records as $a) {
                     $getS = function($k) use ($a) {
                         $s = strtoupper(trim($a[$k] ?? ''));
-                        if ($s === '' && $k === 'status_1') $s = strtoupper(trim($a['status'] ?? ''));
+                        if ($s === '' || $s === '-') $s = strtoupper(trim($a['status'] ?? ''));
                         $tokens = preg_split('/\s+/', $s);
                         if (strpos($s, 'ABSENT') !== false || strpos($s, 'غیر حاضر') !== false || strpos($s, 'غائب') !== false || in_array('A', $tokens, true) || in_array('غ', $tokens, true)) return 'A';
                         if (strpos($s, 'LEAVE') !== false || strpos($s, 'رخصت') !== false || in_array('L', $tokens, true) || in_array('ر', $tokens, true)) return 'L';
@@ -301,19 +301,71 @@ function applyHifzPeriodDates(val) {
                     $v3 = $getS('status_3');
                     
                     $dRaw = trim($a['date'] ?? '');
+                    $dRawDateOnly = explode(' ', $dRaw)[0];
                     $sid = (int)$a['student_id'];
                     $att_map[$dRaw][$sid] = ['s1' => $v1, 's2' => $v2, 's3' => $v3];
+                    $att_map[$dRawDateOnly][$sid] = ['s1' => $v1, 's2' => $v2, 's3' => $v3];
 
                     $dNorm = '';
-                    if (preg_match('/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/', $dRaw, $m)) {
+                    if (preg_match('/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/', $dRawDateOnly, $m)) {
                         $dNorm = sprintf('%04d-%02d-%02d', $m[1], $m[2], $m[3]);
-                    } elseif (preg_match('/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/', $dRaw, $m)) {
+                    } elseif (preg_match('/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/', $dRawDateOnly, $m)) {
                         $dNorm = sprintf('%04d-%02d-%02d', $m[3], $m[2], $m[1]);
                     }
                     if ($dNorm) {
                         $att_map[$dNorm][$sid] = ['s1' => $v1, 's2' => $v2, 's3' => $v3];
                     }
                 }
+
+                // Fetch Attendance from new period_attendance table (used by web panel)
+                $pa_records = [];
+                if (!empty($hifz_student_ids)) {
+                    $in_clause = implode(',', $hifz_student_ids);
+                    $pa_sql = "SELECT student_id, date, period_num, status FROM period_attendance WHERE student_id IN ($in_clause)";
+                    try {
+                        $pa_stmt = $pdo->query($pa_sql);
+                        $pa_records = $pa_stmt->fetchAll(PDO::FETCH_ASSOC);
+                    } catch (PDOException $e) {
+                        $pa_records = [];
+                    }
+                }
+                
+                foreach ($pa_records as $pa) {
+                    $dRaw = trim($pa['date'] ?? '');
+                    $dRawDateOnly = explode(' ', $dRaw)[0];
+                    $sid = (int)$pa['student_id'];
+                    $pnum = (int)$pa['period_num'];
+                    $stat = strtoupper(trim($pa['status'] ?? ''));
+                    $normStat = '';
+                    if (strpos($stat, 'A') !== false || strpos($stat, 'غ') !== false) $normStat = 'A';
+                    elseif (strpos($stat, 'L') !== false || strpos($stat, 'ر') !== false) $normStat = 'L';
+                    elseif ($stat !== '') $normStat = 'P';
+                    
+                    if ($normStat !== '') {
+                        if (!isset($att_map[$dRawDateOnly][$sid])) {
+                            $att_map[$dRawDateOnly][$sid] = ['s1'=>'', 's2'=>'', 's3'=>''];
+                        }
+                        if ($pnum == 1) $att_map[$dRawDateOnly][$sid]['s1'] = $normStat;
+                        elseif ($pnum == 2) $att_map[$dRawDateOnly][$sid]['s2'] = $normStat;
+                        elseif ($pnum == 3) $att_map[$dRawDateOnly][$sid]['s3'] = $normStat;
+                        
+                        $dNorm = '';
+                        if (preg_match('/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/', $dRawDateOnly, $m)) {
+                            $dNorm = sprintf('%04d-%02d-%02d', $m[1], $m[2], $m[3]);
+                        } elseif (preg_match('/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/', $dRawDateOnly, $m)) {
+                            $dNorm = sprintf('%04d-%02d-%02d', $m[3], $m[2], $m[1]);
+                        }
+                        if ($dNorm && $dNorm !== $dRawDateOnly) {
+                            if (!isset($att_map[$dNorm][$sid])) {
+                                $att_map[$dNorm][$sid] = ['s1'=>'', 's2'=>'', 's3'=>''];
+                            }
+                            if ($pnum == 1) $att_map[$dNorm][$sid]['s1'] = $normStat;
+                            elseif ($pnum == 2) $att_map[$dNorm][$sid]['s2'] = $normStat;
+                            elseif ($pnum == 3) $att_map[$dNorm][$sid]['s3'] = $normStat;
+                        }
+                    }
+                }
+
                 // Fetch Complaints for the date range
                 $c_sql = "SELECT c.student_id, c.date, c.complaint as description, 'admin' as type FROM complaints c WHERE c.date BETWEEN ? AND ?";
                 $pc_sql = "SELECT p.student_id, p.date, CONCAT('[', p.category, '] ', p.description) as description, 'parent' as type FROM parent_complaints p WHERE p.date BETWEEN ? AND ?";
@@ -362,6 +414,13 @@ function applyHifzPeriodDates(val) {
                         $summary_missed_manzil = 0;
                         $summary_absent_cnt = 0;
                         $summary_leave_cnt = 0;
+                        // Per-period absent/leave counts
+                        $summary_sabaq_absent = 0;
+                        $summary_sabaq_leave = 0;
+                        $summary_sabqi_absent = 0;
+                        $summary_sabqi_leave = 0;
+                        $summary_manzil_absent = 0;
+                        $summary_manzil_leave = 0;
                         $daily_complaints = 0;
                         $day_of_week = date('N', strtotime($date));
                         $is_thursday = ($day_of_week == 4);
@@ -387,6 +446,14 @@ function applyHifzPeriodDates(val) {
                                 elseif ($rec['manzil_status'] === 'رخصت' || $rec['manzil_status'] === 'Leave') $as3 = 'L';
                             }
 
+                            // Per-period absent/leave counts
+                            if ($as1 === 'A') $summary_sabaq_absent++;
+                            elseif ($as1 === 'L') $summary_sabaq_leave++;
+                            if ($as2 === 'A') $summary_sabqi_absent++;
+                            elseif ($as2 === 'L') $summary_sabqi_leave++;
+                            if ($as3 === 'A') $summary_manzil_absent++;
+                            elseif ($as3 === 'L') $summary_manzil_leave++;
+                            // Global absent/leave: count each student once
                             if ($as1 === 'A' || $as2 === 'A' || $as3 === 'A') $summary_absent_cnt++;
                             if ($as1 === 'L' || $as2 === 'L' || $as3 === 'L') $summary_leave_cnt++;
 
@@ -406,6 +473,9 @@ function applyHifzPeriodDates(val) {
                                     $p['parah'] = $b; $p['status'] = $b; $p['amount'] = '-'; $p['time'] = ''; $p['listener'] = '-';
                                 } else {
                                     $m_p = $prefix == 'manzil' ? 'manzil_details' : ($prefix.'_parah');
+                                    if ($prefix == 'manzil' && empty(trim($rec[$m_p] ?? ''))) {
+                                        $m_p = 'manzil_parah';
+                                    }
                                     $m_a = $prefix == 'sabaq' ? 'sabaq_lines' : ($prefix.'_amount');
                                     
                                     $missed = !$rec || empty(trim($rec[$prefix.'_status'] ?? '')) || ($rec[$prefix.'_status'] ?? '') == 'ناغہ' || ($rec[$prefix.'_status'] ?? '') == '-';
@@ -473,22 +543,56 @@ function applyHifzPeriodDates(val) {
                         
                         $url_base = "hifz_filtered_report.php?class=".urlencode($selected_class)."&start_date=$start_date&end_date=$end_date&filter_date=$date";
                         
-                        echo "<tr class='table-light border-top border-dark border-2'>
-                                <td colspan='3' class='fw-bold text-end'>آج کی سمری ($formatted_date):</td>
-                                <td colspan='3' class='fw-bold' style='font-size:11px;'>
-                                    <span class='text-danger'>ناغہ: <a href='$url_base&lesson_type=sabaq&miss_count=any' target='_blank'>$summary_missed_sabaq</a></span><br>
-                                    <span class='text-success'>سنانے والے: <a href='$url_base&lesson_type=sabaq&miss_count=0' target='_blank'>$sabaq_0</a></span><br><span class='text-danger fw-bold'>غیر حاضر: <?php echo $summary_absent_cnt; ?></span><br><span class='text-success fw-bold'>رخصت: <?php echo $summary_leave_cnt; ?></span>
-                                </td>
-                                <td colspan='4' class='fw-bold' style='font-size:11px;'>
-                                    <span class='text-danger'>ناغہ: <a href='$url_base&lesson_type=sabqi&miss_count=any' target='_blank'>$summary_missed_sabqi</a></span><br>
-                                    <span class='text-success'>سنانے والے: <a href='$url_base&lesson_type=sabqi&miss_count=0' target='_blank'>$sabqi_0</a></span>
-                                </td>
-                                <td colspan='4' class='fw-bold' style='font-size:11px;'>
-                                    <span class='text-danger'>ناغہ: <a href='$url_base&lesson_type=manzil&miss_count=any' target='_blank'>$summary_missed_manzil</a></span><br>
-                                    <span class='text-success'>سنانے والے: <a href='$url_base&lesson_type=manzil&miss_count=0' target='_blank'>$manzil_0</a></span>
-                                </td>
-                                <td class='text-danger fw-bold'>شکایات: $daily_complaints</td>
-                              </tr>";
+                        // Daily Summary Row - redesigned to show sabaq/sabqi/manzil separately with per-period absent/leave
+                        $sabaq_sender = $total_st - $summary_missed_sabaq - $summary_sabaq_absent - $summary_sabaq_leave;
+                        if ($sabaq_sender < 0) $sabaq_sender = 0;
+                        $sabqi_sender = $total_st - $summary_missed_sabqi - $summary_sabqi_absent - $summary_sabqi_leave;
+                        if ($sabqi_sender < 0) $sabqi_sender = 0;
+                        $manzil_sender = $total_st - $summary_missed_manzil - $summary_manzil_absent - $summary_manzil_leave;
+                        if ($manzil_sender < 0) $manzil_sender = 0;
+
+                        echo "<tr class='border-top border-dark border-2' style='background:#f0f4f8;'>
+                            <td colspan='15' class='p-2'>
+                              <div class='d-flex justify-content-between align-items-center mb-1' dir='rtl'>
+                                <div class='d-flex gap-3'>
+                                  <a href='{$url_base}&lesson_type=absent' target='_blank' class='text-danger fw-bold text-decoration-none' style='font-size:11px;'>غیر حاضر: <u>{$summary_absent_cnt}</u></a>
+                                  <a href='{$url_base}&lesson_type=leave' target='_blank' class='text-warning fw-bold text-decoration-none' style='font-size:11px;'>رخصت: <u>{$summary_leave_cnt}</u></a>
+                                  <span class='fw-bold text-danger' style='font-size:11px;'>شکایات: $daily_complaints</span>
+                                </div>
+                                <span class='fw-bold text-dark' style='font-size:12px;'>روزانہ سمری ({$formatted_date})</span>
+                              </div>
+                              <div class='row g-1' dir='rtl'>
+                                <div class='col-4'>
+                                  <div class='border border-success rounded p-2 text-center' style='font-size:11px; background:rgba(25,135,84,0.05)'>
+                                    <div class='fw-bold text-success mb-1'>سبق</div>
+                                    <a href='{$url_base}&lesson_type=sabaq&miss_count=0' target='_blank' class='text-success fw-bold text-decoration-none d-block'>سنانے والے: <u>$sabaq_sender</u></a>
+                                    <a href='{$url_base}&lesson_type=sabaq&miss_count=any' target='_blank' class='text-danger fw-bold text-decoration-none d-block'>ناغہ: <u>$summary_missed_sabaq</u></a>
+                                    <a href='{$url_base}&lesson_type=sabaq_absent' target='_blank' class='text-danger fw-bold text-decoration-none d-block' style='opacity:0.8'>غیر حاضر: <u>$summary_sabaq_absent</u></a>
+                                    <a href='{$url_base}&lesson_type=sabaq_leave' target='_blank' class='text-warning fw-bold text-decoration-none d-block'>رخصت: <u>$summary_sabaq_leave</u></a>
+                                  </div>
+                                </div>
+                                <div class='col-4'>
+                                  <div class='border border-primary rounded p-2 text-center' style='font-size:11px; background:rgba(13,110,253,0.05)'>
+                                    <div class='fw-bold text-primary mb-1'>سبقی</div>
+                                    <a href='{$url_base}&lesson_type=sabqi&miss_count=0' target='_blank' class='text-success fw-bold text-decoration-none d-block'>سنانے والے: <u>$sabqi_sender</u></a>
+                                    <a href='{$url_base}&lesson_type=sabqi&miss_count=any' target='_blank' class='text-danger fw-bold text-decoration-none d-block'>ناغہ: <u>$summary_missed_sabqi</u></a>
+                                    <a href='{$url_base}&lesson_type=sabqi_absent' target='_blank' class='text-danger fw-bold text-decoration-none d-block' style='opacity:0.8'>غیر حاضر: <u>$summary_sabqi_absent</u></a>
+                                    <a href='{$url_base}&lesson_type=sabqi_leave' target='_blank' class='text-warning fw-bold text-decoration-none d-block'>رخصت: <u>$summary_sabqi_leave</u></a>
+                                  </div>
+                                </div>
+                                <div class='col-4'>
+                                  <div class='border border-warning rounded p-2 text-center' style='font-size:11px; background:rgba(255,193,7,0.05)'>
+                                    <div class='fw-bold text-warning mb-1'>منزل</div>
+                                    <a href='{$url_base}&lesson_type=manzil&miss_count=0' target='_blank' class='text-success fw-bold text-decoration-none d-block'>سنانے والے: <u>$manzil_sender</u></a>
+                                    <a href='{$url_base}&lesson_type=manzil&miss_count=any' target='_blank' class='text-danger fw-bold text-decoration-none d-block'>ناغہ: <u>$summary_missed_manzil</u></a>
+                                    <a href='{$url_base}&lesson_type=manzil_absent' target='_blank' class='text-danger fw-bold text-decoration-none d-block' style='opacity:0.8'>غیر حاضر: <u>$summary_manzil_absent</u></a>
+                                    <a href='{$url_base}&lesson_type=manzil_leave' target='_blank' class='text-warning fw-bold text-decoration-none d-block'>رخصت: <u>$summary_manzil_leave</u></a>
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>";
+
                     }
                 } else {
                     echo "<tr><td colspan='14' class='text-danger p-4 fw-bold'>اس کلاس میں کوئی طالب علم نہیں ملا۔</td></tr>";

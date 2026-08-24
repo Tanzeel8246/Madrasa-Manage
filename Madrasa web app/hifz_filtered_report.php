@@ -6,10 +6,15 @@ $selected_class = $_GET['class'] ?? '';
 $start_date = $_GET['start_date'] ?? date('Y-m-d');
 $end_date = $_GET['end_date'] ?? date('Y-m-d');
 $filter_date = $_GET['filter_date'] ?? ''; // If empty, means weekly period
-$lesson_type = $_GET['lesson_type'] ?? ''; // sabaq, sabqi, manzil
+$lesson_type = $_GET['lesson_type'] ?? ''; // sabaq, sabqi, manzil, absent, leave, sabaq_absent, sabaq_leave, sabqi_absent, sabqi_leave, manzil_absent, manzil_leave
 $miss_count = $_GET['miss_count'] ?? ''; // 0, 1, 2, 3, 'more', or 'any'
 
-if (empty($selected_class) || empty($lesson_type) || $miss_count === '') {
+// Per-period absent/leave types
+$per_period_types = ['absent', 'leave', 'sabaq_absent', 'sabaq_leave', 'sabqi_absent', 'sabqi_leave', 'manzil_absent', 'manzil_leave'];
+$needs_att_filter = in_array($lesson_type, $per_period_types);
+
+// Validate: miss_count not needed for absent/leave types
+if (empty($selected_class) || ($miss_count === '' && !$needs_att_filter)) {
     echo "Invalid parameters.";
     exit;
 }
@@ -103,21 +108,98 @@ foreach($all_students as $s) {
     }
 }
 
+// Fetch Attendance for absent/leave filter (handles both global and per-period)
+$att_map_filter = []; // sid => ['s1'=>'A/L/P', 's2'=>, 's3'=>]
+if ($needs_att_filter && !empty($filter_date)) {
+    try {
+        $att_stmt = $pdo->prepare("SELECT student_id, status, status_1, status_2, status_3 FROM attendance WHERE date LIKE ?");
+        $att_stmt->execute([$filter_date . '%']);
+        foreach ($att_stmt->fetchAll(PDO::FETCH_ASSOC) as $a) {
+            $parseS = function($val, $fallback = '') {
+                $s = strtoupper(trim($val ?? $fallback));
+                if (strpos($s, 'ABSENT') !== false || strpos($s, 'غیر حاضر') !== false || strpos($s, 'غائب') !== false || $s === 'A') return 'A';
+                if (strpos($s, 'LEAVE') !== false || strpos($s, 'رخصت') !== false || $s === 'L') return 'L';
+                return $s !== '' ? 'P' : '';
+            };
+            $s1_raw = $a['status_1'] ?? '';
+            $s2_raw = $a['status_2'] ?? '';
+            $s3_raw = $a['status_3'] ?? '';
+            $fallback = $a['status'] ?? '';
+            $att_map_filter[$a['student_id']] = [
+                's1' => $parseS($s1_raw ?: $fallback),
+                's2' => $parseS($s2_raw ?: $fallback),
+                's3' => $parseS($s3_raw ?: $fallback),
+            ];
+        }
+        
+        $pa_stmt = $pdo->prepare("SELECT student_id, period_num, status FROM period_attendance WHERE date LIKE ?");
+        $pa_stmt->execute([$filter_date . '%']);
+        foreach ($pa_stmt->fetchAll(PDO::FETCH_ASSOC) as $pa) {
+            $sid = (int)$pa['student_id'];
+            $pnum = (int)$pa['period_num'];
+            $stat = strtoupper(trim($pa['status'] ?? ''));
+            $normStat = '';
+            if (strpos($stat, 'A') !== false || strpos($stat, 'غ') !== false) $normStat = 'A';
+            elseif (strpos($stat, 'L') !== false || strpos($stat, 'ر') !== false) $normStat = 'L';
+            elseif ($stat !== '') $normStat = 'P';
+            
+            if ($normStat !== '') {
+                if (!isset($att_map_filter[$sid])) {
+                    $att_map_filter[$sid] = ['s1'=>'', 's2'=>'', 's3'=>''];
+                }
+                if ($pnum == 1) $att_map_filter[$sid]['s1'] = $normStat;
+                elseif ($pnum == 2) $att_map_filter[$sid]['s2'] = $normStat;
+                elseif ($pnum == 3) $att_map_filter[$sid]['s3'] = $normStat;
+            }
+        }
+    } catch (PDOException $e) {}
+}
+
 // Filter students
 $filtered_student_ids = [];
 foreach($all_students as $s) {
     $sid = $s['id'];
     
-    if (!empty($filter_date)) {
-        // Daily Summary Filter
+    if ($needs_att_filter && !empty($filter_date)) {
+        $att = $att_map_filter[$sid] ?? ['s1' => '', 's2' => '', 's3' => ''];
+        $s1 = $att['s1'] ?? '';
+        $s2 = $att['s2'] ?? '';
+        $s3 = $att['s3'] ?? '';
+        $rec = $student_records[$sid][$filter_date] ?? null;
+
+        // Override from hifz record if available
+        if ($rec) {
+            if (in_array($rec['sabaq_status'] ?? '', ['غیر حاضر', 'Absent'])) $s1 = 'A';
+            elseif (in_array($rec['sabaq_status'] ?? '', ['رخصت', 'Leave'])) $s1 = 'L';
+            if (in_array($rec['sabqi_status'] ?? '', ['غیر حاضر', 'Absent'])) $s2 = 'A';
+            elseif (in_array($rec['sabqi_status'] ?? '', ['رخصت', 'Leave'])) $s2 = 'L';
+            if (in_array($rec['manzil_status'] ?? '', ['غیر حاضر', 'Absent'])) $s3 = 'A';
+            elseif (in_array($rec['manzil_status'] ?? '', ['رخصت', 'Leave'])) $s3 = 'L';
+        }
+
+        $match = false;
+        switch ($lesson_type) {
+            case 'absent':        $match = ($s1 === 'A' || $s2 === 'A' || $s3 === 'A'); break;
+            case 'leave':         $match = ($s1 === 'L' || $s2 === 'L' || $s3 === 'L'); break;
+            case 'sabaq_absent':  $match = ($s1 === 'A'); break;
+            case 'sabaq_leave':   $match = ($s1 === 'L'); break;
+            case 'sabqi_absent':  $match = ($s2 === 'A'); break;
+            case 'sabqi_leave':   $match = ($s2 === 'L'); break;
+            case 'manzil_absent': $match = ($s3 === 'A'); break;
+            case 'manzil_leave':  $match = ($s3 === 'L'); break;
+        }
+        if ($match) $filtered_student_ids[] = $sid;
+
+    } elseif (!empty($filter_date)) {
+        // Daily Summary Filter (ناغہ / سنانے والے)
         $rec = $student_records[$sid][$filter_date] ?? null;
         if ($rec) {
             $miss = false;
-            if ($lesson_type == 'sabaq') $miss = empty(trim($rec['sabaq_parah'])) || $rec['sabaq_status'] == 'ناغہ' || $rec['sabaq_status'] == 'Absent' || empty(trim($rec['sabaq_status']));
-            if ($lesson_type == 'sabqi') $miss = empty(trim($rec['sabqi_parah'])) || $rec['sabqi_status'] == 'ناغہ' || $rec['sabqi_status'] == 'Absent' || empty(trim($rec['sabqi_status']));
-            if ($lesson_type == 'manzil') $miss = empty(trim($rec['manzil_parah'])) || $rec['manzil_status'] == 'ناغہ' || $rec['manzil_status'] == 'Absent' || empty(trim($rec['manzil_status']));
+            if ($lesson_type == 'sabaq') $miss = empty(trim($rec['sabaq_parah'] ?? '')) || in_array($rec['sabaq_status'] ?? '', ['ناغہ', 'Absent', '-', '']) || empty(trim($rec['sabaq_status'] ?? ''));
+            if ($lesson_type == 'sabqi') $miss = empty(trim($rec['sabqi_parah'] ?? '')) || in_array($rec['sabqi_status'] ?? '', ['ناغہ', 'Absent', '-', '']) || empty(trim($rec['sabqi_status'] ?? ''));
+            if ($lesson_type == 'manzil') $miss = empty(trim($rec['manzil_details'] ?? $rec['manzil_parah'] ?? '')) || in_array($rec['manzil_status'] ?? '', ['ناغہ', 'Absent', '-', '']) || empty(trim($rec['manzil_status'] ?? ''));
         } else {
-            $miss = true;
+            $miss = true; // No record = miss
         }
         
         if ($miss_count == '0' && !$miss) {
@@ -138,10 +220,21 @@ foreach($all_students as $s) {
 }
 
 $title_label = "";
-$type_label = ($lesson_type == 'sabaq') ? "سبق" : (($lesson_type == 'sabqi') ? "سبقی" : "منزل");
+$type_map = [
+    'sabaq' => 'سبق', 'sabqi' => 'سبقی', 'manzil' => 'منزل',
+    'absent' => 'غیر حاضر', 'leave' => 'رخصت',
+    'sabaq_absent' => 'سبق - غیر حاضر', 'sabaq_leave' => 'سبق - رخصت',
+    'sabqi_absent' => 'سبقی - غیر حاضر', 'sabqi_leave' => 'سبقی - رخصت',
+    'manzil_absent' => 'منزل - غیر حاضر', 'manzil_leave' => 'منزل - رخصت',
+];
+$type_label = $type_map[$lesson_type] ?? $lesson_type;
 if (!empty($filter_date)) {
-    $status_label = ($miss_count == '0') ? "سنانے والے طلبہ" : "کا ناغہ کرنے والے طلبہ";
-    $title_label = "بتاریخ " . translateDateUrduFull($filter_date) . " " . $type_label . " " . $status_label;
+    if (str_contains($lesson_type, 'absent') || str_contains($lesson_type, 'leave')) {
+        $title_label = "بتاریخ " . translateDateUrduFull($filter_date) . " " . $type_label . " طلبہ";
+    } else {
+        $status_label = ($miss_count == '0') ? "سنانے والے طلبہ" : "کا ناغہ کرنے والے طلبہ";
+        $title_label = "بتاریخ " . translateDateUrduFull($filter_date) . " " . $type_label . " " . $status_label;
+    }
 } else {
     if ($miss_count == '0') $mc_lbl = "بِلا ناغہ (0 ناغے)";
     elseif ($miss_count == 'more') $mc_lbl = "3 سے زیادہ ناغے";
@@ -210,24 +303,64 @@ if (!empty($filter_date)) {
                             $rec = $student_records[$sid][$d] ?? null;
                             $formatted_date = date('d-M-y', strtotime($d));
                             
+                            $att = $att_map_filter[$sid] ?? ['s1' => '', 's2' => '', 's3' => ''];
+                            $s1 = $att['s1'] ?? '';
+                            $s2 = $att['s2'] ?? '';
+                            $s3 = $att['s3'] ?? '';
+
                             if ($rec) {
+                                if (in_array($rec['sabaq_status'] ?? '', ['غیر حاضر', 'Absent'])) $s1 = 'A';
+                                elseif (in_array($rec['sabaq_status'] ?? '', ['رخصت', 'Leave'])) $s1 = 'L';
+                                if (in_array($rec['sabqi_status'] ?? '', ['غیر حاضر', 'Absent'])) $s2 = 'A';
+                                elseif (in_array($rec['sabqi_status'] ?? '', ['رخصت', 'Leave'])) $s2 = 'L';
+                                if (in_array($rec['manzil_status'] ?? '', ['غیر حاضر', 'Absent'])) $s3 = 'A';
+                                elseif (in_array($rec['manzil_status'] ?? '', ['رخصت', 'Leave'])) $s3 = 'L';
+                            }
+
+                            // Initialize default empty values
+                            $sabaq_parah = '-'; $sabaq_lines = '-'; $sabaq_status = '-';
+                            $sabqi_parah = '-'; $sabqi_amount = '-'; $sabqi_status = '-'; $sabqi_listener = '-';
+                            $manzil_parah = '-'; $manzil_amount = '-'; $manzil_status = '-'; $manzil_listener = '-';
+
+                            // Sabaq
+                            if ($s1 === 'A') {
+                                $sabaq_parah = "<span class='text-danger fw-bold'>غیر حاضر</span>";
+                                $sabaq_status = $sabaq_parah;
+                            } elseif ($s1 === 'L') {
+                                $sabaq_parah = "<span class='text-success fw-bold'>رخصت</span>";
+                                $sabaq_status = $sabaq_parah;
+                            } elseif ($rec) {
                                 $sabaq_parah = cleanUrduStr($rec['sabaq_parah'] ?? '');
                                 $sabaq_lines = htmlspecialchars($rec['sabaq_lines'] ?? '');
                                 $sabaq_status = translateStatusClean($rec['sabaq_status'] ?? '');
-                                
+                            }
+
+                            // Sabqi
+                            if ($s2 === 'A') {
+                                $sabqi_parah = "<span class='text-danger fw-bold'>غیر حاضر</span>";
+                                $sabqi_status = $sabqi_parah;
+                            } elseif ($s2 === 'L') {
+                                $sabqi_parah = "<span class='text-success fw-bold'>رخصت</span>";
+                                $sabqi_status = $sabqi_parah;
+                            } elseif ($rec) {
                                 $sabqi_parah = cleanUrduStr($rec['sabqi_parah'] ?? '');
                                 $sabqi_amount = translateQtyClean($rec['sabqi_amount'] ?? '');
                                 $sabqi_status = translateStatusClean($rec['sabqi_status'] ?? '');
                                 $sabqi_listener = htmlspecialchars($rec['sabqi_listener'] ?? '');
-                                
+                            }
+
+                            // Manzil
+                            if ($s3 === 'A') {
+                                $manzil_parah = "<span class='text-danger fw-bold'>غیر حاضر</span>";
+                                $manzil_status = $manzil_parah;
+                            } elseif ($s3 === 'L') {
+                                $manzil_parah = "<span class='text-success fw-bold'>رخصت</span>";
+                                $manzil_status = $manzil_parah;
+                            } elseif ($rec) {
                                 $manzil_parah = cleanUrduStr($rec['manzil_parah'] ?? '');
                                 $manzil_amount = htmlspecialchars($rec['manzil_amount'] ?? '');
                                 $manzil_status = translateStatusClean($rec['manzil_status'] ?? '');
                                 $manzil_listener = htmlspecialchars($rec['manzil_listener'] ?? '');
-                            } else {
-                                $sabaq_parah = '-'; $sabaq_lines = '-'; $sabaq_status = '-';
-                                $sabqi_parah = '-'; $sabqi_amount = '-'; $sabqi_status = '-'; $sabqi_listener = '-';
-                                $manzil_parah = '-'; $manzil_amount = '-'; $manzil_status = '-'; $manzil_listener = '-';
                             }
                             
                             $comp_key = $sid . '_' . $d;

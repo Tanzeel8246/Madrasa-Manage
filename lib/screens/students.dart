@@ -32,9 +32,10 @@ class _StudentsPageState extends State<StudentsPage> {
   List<Map<String, dynamic>> _foundAlumni = [];
   List<Map<String, dynamic>> _classes = [];
   String? _selectedClass;
+  String? _selectedResidenceStatus;
 
   // پیجینیشن متغیرات (Pagination)
-  static const int _pageSize = 200;
+  static const int _pageSize = 50;
   int _activeOffset = 0;
   int _alumniOffset = 0;
   bool _hasMoreActive = true;
@@ -164,6 +165,7 @@ class _StudentsPageState extends State<StudentsPage> {
     final fatherNameController = TextEditingController();
     final rollNoController = TextEditingController();
     _selectedClass = null;
+      _selectedResidenceStatus = null;
     final contactController = TextEditingController();
     final addressController = TextEditingController();
     final admissionDateController =
@@ -278,6 +280,25 @@ class _StudentsPageState extends State<StudentsPage> {
                           });
                         },
                       ),
+                        const SizedBox(height: 10),
+                        DropdownButtonFormField<String>(
+                          value: _selectedResidenceStatus,
+                          decoration: InputDecoration(
+                            labelText: isUrduGlobal.value ? "?????? ?????" : "Residential Status",
+                            border: const OutlineInputBorder(),
+                          ),
+                          items: const [
+                            DropdownMenuItem(value: 'residential_aided', child: Text("??????? ??????")),
+                            DropdownMenuItem(value: 'non_residential_non_aided', child: Text("??? ??????? ??? ??????")),
+                            DropdownMenuItem(value: 'residential_non_aided', child: Text("??????? ??? ??????")),
+                            DropdownMenuItem(value: 'non_residential_aided', child: Text("??? ??????? ??????")),
+                          ],
+                          onChanged: (v) {
+                            setDialogState(() {
+                              _selectedResidenceStatus = v;
+                            });
+                          },
+                        ),
                     ),
                   ],
                 ),
@@ -409,6 +430,7 @@ class _StudentsPageState extends State<StudentsPage> {
                           'father_name': fatherNameController.text.trim(),
                           'roll_number': rollNoController.text.trim(),
                           'class_name': _selectedClass ?? '',
+          'residence_status': _selectedResidenceStatus ?? '',
                           'contact_number': contactController.text.trim(),
                           'address': addressController.text.trim(),
                           'status': 'Active',
@@ -801,8 +823,19 @@ class _StudentsPageState extends State<StudentsPage> {
     );
   }
 
-  Widget _buildGroupedList(bool isUrdu) {
-    if (_foundActive.isEmpty && _foundAlumni.isEmpty) {
+  Widget _buildGroupedList(bool isUrdu, String filterType) {
+    List<Map<String, dynamic>> activeList = [];
+    List<Map<String, dynamic>> alumniList = [];
+
+    if (filterType == 'alumni') {
+        alumniList = _foundAlumni;
+    } else if (filterType == 'all_active') {
+        activeList = _foundActive;
+    } else {
+        activeList = _foundActive.where((s) => (s['residence_status']?.toString() ?? '') == filterType).toList();
+    }
+
+    if (activeList.isEmpty && alumniList.isEmpty) {
       return Center(
         child: Text(
           isUrdu ? 'کوئی ریکارڈ نہیں ملا' : 'No record found',
@@ -824,7 +857,7 @@ class _StudentsPageState extends State<StudentsPage> {
 
     // Group active students by class
     Map<String, List<Map<String, dynamic>>> classGroups = {};
-    for (var student in _foundActive) {
+    for (var student in activeList) {
       String cName = student['class_name']?.toString() ?? 'دیگر';
       if (cName.trim().isEmpty) {
         cName = 'دیگر';
@@ -877,7 +910,7 @@ class _StudentsPageState extends State<StudentsPage> {
     }
 
     // Add Alumni section at the end if not empty
-    if (_foundAlumni.isNotEmpty) {
+    if (alumniList.isNotEmpty) {
       listWidgets.add(
         Padding(
           padding: const EdgeInsets.only(top: 25, bottom: 5, left: 5, right: 5),
@@ -896,7 +929,7 @@ class _StudentsPageState extends State<StudentsPage> {
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(10),
-            child: _buildClassDataTable(_foundAlumni, isUrdu),
+            child: _buildClassDataTable(alumniList, isUrdu),
           ),
         ),
       );
@@ -1151,6 +1184,7 @@ class _StudentsPageState extends State<StudentsPage> {
     final rollNoController =
         TextEditingController(text: student['roll_number']?.toString() ?? '');
     String? localSelectedClass = student['class_name']?.toString();
+      _selectedResidenceStatus = student['residence_status']?.toString();
     final contactController = TextEditingController(
         text: student['contact_number']?.toString() ?? '');
     final addressController =
@@ -1268,6 +1302,7 @@ class _StudentsPageState extends State<StudentsPage> {
                   'father_name': fatherNameController.text.trim(),
                   'roll_number': rollNoController.text.trim(),
                   'class_name': localSelectedClass ?? '',
+          'residence_status': _selectedResidenceStatus ?? '',
                   'contact_number': contactController.text.trim(),
                   'address': addressController.text.trim(),
                   'photo': photoPath ?? '',

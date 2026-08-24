@@ -20,7 +20,7 @@ class DBHelper {
     String path = join(await getDatabasesPath(), 'madrasa.db');
     return await openDatabase(
       path,
-      version: 37,
+      version: 38,
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
           try {
@@ -632,6 +632,12 @@ class DBHelper {
                   is_deleted INTEGER DEFAULT 0
                 )
               ''');
+            } catch (_) {}
+          }
+
+          if (oldVersion < 38) {
+            try {
+              await db.execute("ALTER TABLE students ADD COLUMN residence_status TEXT DEFAULT ''");
             } catch (_) {}
           }
         },
@@ -2828,6 +2834,7 @@ class DBHelper {
                 int.tryParse(item['hijri_year']?.toString() ?? '1447') ?? 1447,
             'system_type':
                 (item['system_type']?.toString().isNotEmpty == true) ? item['system_type'].toString() : 'Madrasa',
+            'residence_status': item['residence_status']?.toString() ?? '',
             'is_deleted':
                 int.tryParse(item['is_deleted']?.toString() ?? '0') ?? 0,
             'is_synced': 1,

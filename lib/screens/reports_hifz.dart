@@ -479,11 +479,11 @@ class _ReportsHifzPageState extends State<ReportsHifzPage> {
     List<Widget> rows = [];
     final List<Map<String, dynamic>> combinedRecords = [];
     combinedRecords.addAll(_hifzRecords);
-    
+
+    // Frequency maps for weekly/period summary at bottom
     Map<String, int> freqSabaq = {};
     Map<String, int> freqSabqi = {};
     Map<String, int> freqManzil = {};
-    
     int dailyMissedSabaq = 0;
     int dailyMissedSabqi = 0;
     int dailyMissedManzil = 0;
@@ -491,6 +491,22 @@ class _ReportsHifzPageState extends State<ReportsHifzPage> {
     int dailyLeaveCount = 0;
     int dailyComplaints = 0;
     String lastDateFormatted = "";
+
+    // Daily per-period lists for detailed navigation
+    List<String> dailyAbsentSids = [];
+    List<String> dailyLeaveSids = [];
+    List<String> dailySabaqSenderSids = [];
+    List<String> dailySabaqMissSids = [];
+    List<String> dailySabaqAbsentSids = [];
+    List<String> dailySabaqLeaveSids = [];
+    List<String> dailySabqiSenderSids = [];
+    List<String> dailySabqiMissSids = [];
+    List<String> dailySabqiAbsentSids = [];
+    List<String> dailySabqiLeaveSids = [];
+    List<String> dailyManzilSenderSids = [];
+    List<String> dailyManzilMissSids = [];
+    List<String> dailyManzilAbsentSids = [];
+    List<String> dailyManzilLeaveSids = [];
 
     if (fromDate != null && toDate != null) {
       DateTime sDate = _parseRobust(fromDate!);
@@ -546,64 +562,201 @@ class _ReportsHifzPageState extends State<ReportsHifzPage> {
 
     void addDailySummary() {
       if (lastDateFormatted.isNotEmpty && selectedStudentId == null) {
-        final dSabaq = dailyMissedSabaq;
+        final dSabaqMiss = dailyMissedSabaq;
+        final dSabqiMiss = dailyMissedSabqi;
+        final dManzilMiss = dailyMissedManzil;
         final dAbsent = dailyAbsentCount;
         final dLeave = dailyLeaveCount;
+        final dComplaints = dailyComplaints;
         final ldFormatted = lastDateFormatted;
-        
-        final calcVal = _students.length - dSabaq - dAbsent - dLeave;
-        final tSabaq0 = calcVal < 0 ? 0 : calcVal;
 
-        void nav(String title, String subtitle, String lType, dynamic count) {
-            final fRecs = <Map<String, dynamic>>[];
-            for(var s in _students) {
-                var sid = s['id'].toString();
-                bool hasMiss = false;
-                var h = combinedRecords.firstWhere(
-                  (r) => r['student_id'].toString() == sid && (r['date'] ?? '').contains(ldFormatted.split('-').reversed.join('-')),
-                  orElse: () => {}
-                );
-                if (h.isNotEmpty) {
-                    if (lType == 'sabaq') hasMiss = h['sabaq_grade'] == '-' || h['sabaq_grade'] == 'Absent' || h['sabaq_grade'] == 'ناغہ' || (h['sabaq_para']?.toString().trim().isEmpty ?? true) || h['sabaq_para'] == '-';
-                } else {
-                    hasMiss = true;
-                }
-                
-                if (count == 0 && !hasMiss) {
-                    if(h.isEmpty) h = {'student_id': s['id'], 'date': ldFormatted, 'sabaq_grade': '-', 'sabqi_grade': '-', 'manzil_grade': '-'};
-                    fRecs.add(h);
-                } else if (count == 'any' && hasMiss) {
-                    if(h.isEmpty) h = {'student_id': s['id'], 'date': ldFormatted, 'sabaq_grade': '-', 'sabqi_grade': '-', 'manzil_grade': '-'};
-                    fRecs.add(h);
-                }
+        // Capture all per-period lists
+        final capAbsentSids = List<String>.from(dailyAbsentSids);
+        final capLeaveSids = List<String>.from(dailyLeaveSids);
+        final capSabaqSenders = List<String>.from(dailySabaqSenderSids);
+        final capSabaqMiss = List<String>.from(dailySabaqMissSids);
+        final capSabaqAbsent = List<String>.from(dailySabaqAbsentSids);
+        final capSabaqLeave = List<String>.from(dailySabaqLeaveSids);
+        final capSabqiSenders = List<String>.from(dailySabqiSenderSids);
+        final capSabqiMiss = List<String>.from(dailySabqiMissSids);
+        final capSabqiAbsent = List<String>.from(dailySabqiAbsentSids);
+        final capSabqiLeave = List<String>.from(dailySabqiLeaveSids);
+        final capManzilSenders = List<String>.from(dailyManzilSenderSids);
+        final capManzilMiss = List<String>.from(dailyManzilMissSids);
+        final capManzilAbsent = List<String>.from(dailyManzilAbsentSids);
+        final capManzilLeave = List<String>.from(dailyManzilLeaveSids);
+
+        void navBySids(String title, List<String> sids) {
+          final fRecs = <Map<String, dynamic>>[];
+          for (var s in _students) {
+            final sid = s['id'].toString();
+            if (!sids.contains(sid)) continue;
+            var h = combinedRecords.firstWhere(
+              (r) => r['student_id'].toString() == sid &&
+                  (() {
+                    try {
+                      final rd = r['date']?.toString() ?? '';
+                      final dt1 = DateTime.parse(rd.contains('/') ? rd.split('/').reversed.join('-') : rd);
+                      final dt2 = intl.DateFormat('dd-MM-yyyy').parse(ldFormatted);
+                      return dt1.year == dt2.year && dt1.month == dt2.month && dt1.day == dt2.day;
+                    } catch (_) {
+                      return (r['date'] ?? '').toString().contains(ldFormatted.split('-').reversed.join('-'));
+                    }
+                  })(),
+              orElse: () => {},
+            );
+            if (h.isEmpty) {
+              h = {'student_id': s['id'], 'date': ldFormatted, 'sabaq_grade': '-', 'sabqi_grade': '-', 'manzil_grade': '-'};
             }
-            Navigator.push(context, MaterialPageRoute(builder: (_) => FilteredHifzReportPage(title: title, subtitle: subtitle, filteredRecords: fRecs, allStudents: _students)));
+            fRecs.add(h);
+          }
+          Navigator.push(context, MaterialPageRoute(
+              builder: (_) => FilteredHifzReportPage(
+                  title: title,
+                  subtitle: ldFormatted,
+                  filteredRecords: fRecs,
+                  allStudents: _students)));
         }
 
-        Widget clickable(String label, int c, String type, dynamic countVal, {bool isSuccess = false, Color? customColor}) {
-            return GestureDetector(
-                onTap: () => nav(isUrduGlobal.value ? "$label ($ldFormatted)" : "Detailed List", label, type, countVal),
-                child: MouseRegion(cursor: SystemMouseCursors.click, child: Text("$label: $c طلبہ", style: TextStyle(fontWeight: FontWeight.bold, decoration: TextDecoration.underline, color: customColor ?? (isSuccess ? Colors.green.shade700 : Colors.red), fontSize: 11))),
-            );
+        Widget clickableItem(String label, int count, List<String> sids, Color color) {
+          return GestureDetector(
+            onTap: count > 0 ? () => navBySids('$label ($ldFormatted)', sids) : null,
+            child: MouseRegion(
+              cursor: count > 0 ? SystemMouseCursors.click : MouseCursor.defer,
+              child: RichText(
+                textDirection: TextDirection.rtl,
+                text: TextSpan(
+                  children: [
+                    TextSpan(
+                      text: '$label: ',
+                      style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.bold),
+                    ),
+                    TextSpan(
+                      text: '$count',
+                      style: TextStyle(
+                        color: color,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        decoration: count > 0 ? TextDecoration.underline : null,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+
+        Widget lessonBox(
+          String title,
+          Color titleColor,
+          int senders,
+          int missed,
+          int absent,
+          int leave,
+          List<String> senderSids,
+          List<String> missSids,
+          List<String> absentSids,
+          List<String> leaveSids,
+        ) {
+          return Expanded(
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 3),
+              padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+              decoration: BoxDecoration(
+                color: titleColor.withOpacity(0.06),
+                border: Border.all(color: titleColor.withOpacity(0.5)),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Center(
+                    child: Text(title,
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                            color: titleColor)),
+                  ),
+                  const Divider(height: 6),
+                  clickableItem('سنانے والے', senders, senderSids, Colors.green.shade700),
+                  const SizedBox(height: 3),
+                  clickableItem('ناغہ', missed, missSids, Colors.red),
+                  const SizedBox(height: 3),
+                  clickableItem('غیر حاضر', absent, absentSids, Colors.red.shade900),
+                  const SizedBox(height: 3),
+                  clickableItem('رخصت', leave, leaveSids, Colors.orange.shade700),
+                ],
+              ),
+            ),
+          );
         }
 
         rows.add(
           Container(
             width: 950,
-            color: Colors.blueGrey.shade50,
-            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
+            margin: const EdgeInsets.only(bottom: 2),
+            decoration: BoxDecoration(
+              color: Colors.blueGrey.shade50,
+              border: Border(
+                top: BorderSide(color: Colors.blueGrey.shade300, width: 1.5),
+                bottom: BorderSide(color: Colors.blueGrey.shade300, width: 1.5),
+              ),
+            ),
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text(isUrduGlobal.value ? "آج کی سمری ($ldFormatted)" : "Daily Summary ($ldFormatted)", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
-                clickable("سنانے والے", tSabaq0, 'sabaq', 0, isSuccess: true),
-                clickable("ناغہ کرنے والے", dSabaq, 'sabaq', 'any'),
-                clickable("غیر حاضر", dAbsent, 'sabaq', 'absent', customColor: Colors.red.shade900),
-                clickable("رخصت", dLeave, 'sabaq', 'leave', customColor: Colors.orange.shade800),
-                Text(isUrduGlobal.value ? "شکایات: $dailyComplaints" : "Complaints: $dailyComplaints", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
+                // Header row
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        clickableItem('رخصت', dLeave, capLeaveSids, Colors.orange.shade700),
+                        const SizedBox(width: 12),
+                        clickableItem('غیر حاضر', dAbsent, capAbsentSids, Colors.red.shade900),
+                        const SizedBox(width: 12),
+                        Text('شکایات: $dComplaints',
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.red,
+                                fontSize: 11)),
+                      ],
+                    ),
+                    Text(
+                      'روزانہ سمری ($ldFormatted)',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
+                          fontSize: 13),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                // Three lesson boxes
+                Row(
+                  children: [
+                    lessonBox(
+                      'منزل', Colors.orange.shade800,
+                      capManzilSenders.length, dManzilMiss, capManzilAbsent.length, capManzilLeave.length,
+                      capManzilSenders, capManzilMiss, capManzilAbsent, capManzilLeave,
+                    ),
+                    lessonBox(
+                      'سبقی', Colors.blue.shade700,
+                      capSabqiSenders.length, dSabqiMiss, capSabqiAbsent.length, capSabqiLeave.length,
+                      capSabqiSenders, capSabqiMiss, capSabqiAbsent, capSabqiLeave,
+                    ),
+                    lessonBox(
+                      'سبق', Colors.green.shade700,
+                      capSabaqSenders.length, dSabaqMiss, capSabaqAbsent.length, capSabaqLeave.length,
+                      capSabaqSenders, capSabaqMiss, capSabaqAbsent, capSabaqLeave,
+                    ),
+                  ],
+                ),
               ],
             ),
-          )
+          ),
         );
       }
       dailyMissedSabaq = 0;
@@ -612,6 +765,20 @@ class _ReportsHifzPageState extends State<ReportsHifzPage> {
       dailyAbsentCount = 0;
       dailyLeaveCount = 0;
       dailyComplaints = 0;
+      dailyAbsentSids = [];
+      dailyLeaveSids = [];
+      dailySabaqSenderSids = [];
+      dailySabaqMissSids = [];
+      dailySabaqAbsentSids = [];
+      dailySabaqLeaveSids = [];
+      dailySabqiSenderSids = [];
+      dailySabqiMissSids = [];
+      dailySabqiAbsentSids = [];
+      dailySabqiLeaveSids = [];
+      dailyManzilSenderSids = [];
+      dailyManzilMissSids = [];
+      dailyManzilAbsentSids = [];
+      dailyManzilLeaveSids = [];
     }
 
     for (var origH in combinedRecords) {
@@ -653,7 +820,6 @@ class _ReportsHifzPageState extends State<ReportsHifzPage> {
         h['daily_complaint'] = '-';
       }
 
-      String attStatus = 'P';
       var attMatches = _allAttendance.where((a) {
         if (a['student_id'].toString() != sid) return false;
         String aDate = (a['date'] ?? '').toString().trim();
@@ -687,18 +853,22 @@ class _ReportsHifzPageState extends State<ReportsHifzPage> {
       
       if (attMatches.isNotEmpty) {
         var am = attMatches.first;
-        String getS(String k) {
-          String s = (am[k] ?? '').toString().toUpperCase();
-          if (s.isEmpty && k == 'status_1') s = (am['status'] ?? '').toString().toUpperCase();
-          var t = s.split(RegExp(r'\s+'));
-          if (s.contains('ABSENT') || s.contains('غائب') || s.contains('غیر حاضر') || t.contains('A') || t.contains('غ')) return 'A';
-          if (s.contains('LEAVE') || s.contains('رخصت') || t.contains('L') || t.contains('ر')) return 'L';
-          if (s.contains('P') || s.contains('حاضر')) return 'P';
-          return s.isNotEmpty ? 'P' : '';
+        // Mobile SQLite attendance table only has unified 'status' column
+        // (no status_1/status_2/status_3). Apply same status to all three periods.
+        String rawStatus = (am['status'] ?? '').toString().toUpperCase().trim();
+        String unified = '';
+        if (rawStatus.contains('ABSENT') || rawStatus.contains('غائب') || 
+            rawStatus.contains('غیر حاضر') || rawStatus == 'A' || rawStatus == 'غ') {
+          unified = 'A';
+        } else if (rawStatus.contains('LEAVE') || rawStatus.contains('رخصت') || 
+                   rawStatus == 'L' || rawStatus == 'ر') {
+          unified = 'L';
+        } else if (rawStatus.isNotEmpty) {
+          unified = 'P';
         }
-        as1 = getS('status_1');
-        as2 = getS('status_2');
-        as3 = getS('status_3');
+        as1 = unified;
+        as2 = unified;
+        as3 = unified;
       }
 
       if (h['sabaq_grade'] == 'غیر حاضر' || h['sabaq_grade'] == 'Absent') as1 = 'A';
@@ -728,20 +898,33 @@ class _ReportsHifzPageState extends State<ReportsHifzPage> {
           h['${pPrefix}_grade'] = 'غیر حاضر';
           if (pPrefix == 'manzil') h['${pPrefix}_details'] = 'غیر حاضر';
           else h['${pPrefix}_para'] = 'غیر حاضر';
+          // Track per-period absent
+          if (pPrefix == 'sabaq' && !dailySabaqAbsentSids.contains(sid)) dailySabaqAbsentSids.add(sid);
+          if (pPrefix == 'sabqi' && !dailySabqiAbsentSids.contains(sid)) dailySabqiAbsentSids.add(sid);
+          if (pPrefix == 'manzil' && !dailyManzilAbsentSids.contains(sid)) dailyManzilAbsentSids.add(sid);
         } else if (aStat == 'L') {
           h['${pPrefix}_grade'] = 'رخصت';
           if (pPrefix == 'manzil') h['${pPrefix}_details'] = 'رخصت';
           else h['${pPrefix}_para'] = 'رخصت';
+          // Track per-period leave
+          if (pPrefix == 'sabaq' && !dailySabaqLeaveSids.contains(sid)) dailySabaqLeaveSids.add(sid);
+          if (pPrefix == 'sabqi' && !dailySabqiLeaveSids.contains(sid)) dailySabqiLeaveSids.add(sid);
+          if (pPrefix == 'manzil' && !dailyManzilLeaveSids.contains(sid)) dailyManzilLeaveSids.add(sid);
         } else {
           bool missed = h['${pPrefix}_grade'] == '-' || h['${pPrefix}_grade'] == 'ناغہ' || h['${pPrefix}_grade'] == '' || h['${pPrefix}_grade'] == null;
           if (pPrefix == 'manzil') missed = missed || (h['${pPrefix}_details']?.toString().trim().isEmpty ?? true) || h['${pPrefix}_details'] == '-';
           else missed = missed || (h['${pPrefix}_para']?.toString().trim().isEmpty ?? true) || h['${pPrefix}_para'] == '-';
           
           if (missed) {
-             h['${pPrefix}_grade'] = '-';
-             if (pPrefix == 'sabaq') { dailyMissedSabaq++; freqSabaq[sid] = (freqSabaq[sid] ?? 0) + 1; }
-             if (pPrefix == 'sabqi') { dailyMissedSabqi++; freqSabqi[sid] = (freqSabqi[sid] ?? 0) + 1; }
-             if (pPrefix == 'manzil') { dailyMissedManzil++; freqManzil[sid] = (freqManzil[sid] ?? 0) + 1; }
+            h['${pPrefix}_grade'] = '-';
+            if (pPrefix == 'sabaq') { dailyMissedSabaq++; if (!dailySabaqMissSids.contains(sid)) dailySabaqMissSids.add(sid); freqSabaq[sid] = (freqSabaq[sid] ?? 0) + 1; }
+            if (pPrefix == 'sabqi') { dailyMissedSabqi++; if (!dailySabqiMissSids.contains(sid)) dailySabqiMissSids.add(sid); freqSabqi[sid] = (freqSabqi[sid] ?? 0) + 1; }
+            if (pPrefix == 'manzil') { dailyMissedManzil++; if (!dailyManzilMissSids.contains(sid)) dailyManzilMissSids.add(sid); freqManzil[sid] = (freqManzil[sid] ?? 0) + 1; }
+          } else {
+            // has a record — is a sender
+            if (pPrefix == 'sabaq' && !dailySabaqSenderSids.contains(sid)) dailySabaqSenderSids.add(sid);
+            if (pPrefix == 'sabqi' && !dailySabqiSenderSids.contains(sid)) dailySabqiSenderSids.add(sid);
+            if (pPrefix == 'manzil' && !dailyManzilSenderSids.contains(sid)) dailyManzilSenderSids.add(sid);
           }
         }
       }
@@ -750,8 +933,14 @@ class _ReportsHifzPageState extends State<ReportsHifzPage> {
       processPeriod(as2, 'sabqi');
       processPeriod(as3, 'manzil');
 
-      if (as1 == 'A' || as2 == 'A' || as3 == 'A') dailyAbsentCount++;
-      if (as1 == 'L' || as2 == 'L' || as3 == 'L') dailyLeaveCount++;
+      if ((as1 == 'A' || as2 == 'A' || as3 == 'A') && !dailyAbsentSids.contains(sid)) {
+        dailyAbsentCount++;
+        dailyAbsentSids.add(sid);
+      }
+      if ((as1 == 'L' || as2 == 'L' || as3 == 'L') && !dailyLeaveSids.contains(sid)) {
+        dailyLeaveCount++;
+        dailyLeaveSids.add(sid);
+      }
 
       if (comps.isNotEmpty) { dailyComplaints += comps.length; }
 
