@@ -1,11 +1,17 @@
 <?php
 // سیکیورٹی اور ڈیبگنگ
-ini_set('display_errors', 0); // اب ایررز چھپا دیں کیونکہ سسٹم اسٹیبل ہو رہا ہے
+ini_set('display_errors', 0);
 error_reporting(0);
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
+
+if (isset($_GET['lang']) && in_array($_GET['lang'], ['ur', 'en'])) {
+    $_SESSION['lang'] = $_GET['lang'];
+    setcookie('lang', $_GET['lang'], time() + (86400 * 365), '/');
+}
+$lang = $_SESSION['lang'] ?? ($_COOKIE['lang'] ?? 'ur');
 
 require_once 'db.php';
 
@@ -32,6 +38,8 @@ if (isset($_POST['login'])) {
             $_SESSION['role'] = !empty($admin['role']) ? $admin['role'] : 'admin';
             $_SESSION['name'] = $admin['name'];
             $_SESSION['permissions'] = json_decode($admin['permissions'] ?? '[]', true) ?: [];
+            $_SESSION['lang'] = $lang;
+            setcookie('lang', $lang, time() + (86400 * 365), '/');
             echo "<script>window.location.href='dashboard.php';</script>";
             exit;
         } 
@@ -46,25 +54,27 @@ if (isset($_POST['login'])) {
             $_SESSION['role'] = 'parent';
             $_SESSION['name'] = $student['name'];
             $_SESSION['adm_no'] = $student['admission_number'];
+            $_SESSION['lang'] = $lang;
+            setcookie('lang', $lang, time() + (86400 * 365), '/');
             echo "<script>window.location.href='dashboard.php';</script>";
             exit;
         }
 
         // اگر دونوں میں نہیں ملا
-        $error = "غلط یوزر نیم یا پاسورڈ!";
+        $error = ($lang === 'ur') ? "غلط یوزر نیم یا پاسورڈ!" : "Invalid username or password!";
 
     } catch(PDOException $e) {
-        $error = "لاگ ان میں دشواری پیش آ رہی ہے۔";
+        $error = ($lang === 'ur') ? "لاگ ان میں دشواری پیش آ رہی ہے۔" : "An error occurred during login.";
     }
 }
 ?>
 
 <!DOCTYPE html>
-<html lang="ur" dir="rtl">
+<html lang="<?php echo $lang; ?>" dir="<?php echo ($lang=='ur') ? 'rtl' : 'ltr'; ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>لاگ ان - مدرسہ اشرف المدارس</title>
+    <title><?php echo ($lang=='ur') ? 'لاگ ان - ' . e(t('app_name')) : 'Login - ' . e(t('app_name')); ?></title>
     
     <script>
         // Immediate theme load logic to prevent FOUC
@@ -76,14 +86,19 @@ if (isset($_POST['login'])) {
         })();
     </script>
 
+    <?php if ($lang === 'ur'): ?>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;700&display=swap" rel="stylesheet">
+    <?php else: ?>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <?php endif; ?>
     
     <?php include __DIR__ . '/theme_styles.php'; ?>
 
     <style>
         body {
-            font-family: 'Noto Nastaliq Urdu', serif;
+            font-family: <?php echo ($lang === 'ur') ? "'Noto Nastaliq Urdu', serif" : "'Inter', -apple-system, BlinkMacSystemFont, sans-serif"; ?>;
             background-color: var(--bg) !important;
             color: var(--text-main) !important;
             display: flex;
@@ -96,10 +111,10 @@ if (isset($_POST['login'])) {
         .login-box {
             background: var(--card-bg) !important;
             color: var(--text-main) !important;
-            padding: 40px;
+            padding: 35px;
             border-radius: 15px;
             width: 100%;
-            max-width: 400px;
+            max-width: 420px;
             box-shadow: var(--card-shadow) !important;
             border: 1px solid var(--card-border) !important;
         }
@@ -107,8 +122,17 @@ if (isset($_POST['login'])) {
 </head>
 <body>
     <div class="login-box text-center">
+        <!-- Language Switcher Pill -->
+        <div class="d-flex justify-content-end mb-2">
+            <div class="btn-group btn-group-sm rounded-pill border p-1 bg-light">
+                <a href="login.php?lang=ur" class="btn btn-sm rounded-pill px-2 py-0 <?php echo ($lang==='ur') ? 'btn-success text-white fw-bold' : 'text-dark'; ?>" style="font-size: 11px;">اردو</a>
+                <a href="login.php?lang=en" class="btn btn-sm rounded-pill px-2 py-0 <?php echo ($lang==='en') ? 'btn-success text-white fw-bold' : 'text-dark'; ?>" style="font-size: 11px;">English</a>
+            </div>
+        </div>
+
         <img src="logo.png" alt="Logo" style="width: 80px; height: 80px; border-radius: 50%; border: 2px solid var(--primary); margin-bottom: 15px; background: white; object-fit: contain;">
-        <h3 class="mb-4 text-success fw-bold">مدرسہ اشرف المدارس</h3>
+        <h3 class="mb-2 text-success fw-bold"><?php echo e(t('app_name')); ?></h3>
+        <p class="text-muted small mb-4"><?php echo ($lang=='ur') ? 'جامع نظامِ انتظام و تعلیم (Management ERP)' : 'Madrasa & Masjid Management ERP'; ?></p>
         
         <?php if($error): ?>
             <div class="alert alert-danger p-2 small"><?php echo $error; ?></div>
@@ -116,19 +140,19 @@ if (isset($_POST['login'])) {
         
         <form method="POST">
             <div class="mb-3 text-start">
-                <label class="form-label text-success fw-bold">یوزر نیم / داخلہ نمبر</label>
-                <input type="text" name="username" class="form-control" required placeholder="یوزر نیم لکھیں...">
+                <label class="form-label text-success fw-bold"><?php echo ($lang=='ur') ? 'یوزر نیم / داخلہ نمبر' : 'Username / Admission No'; ?></label>
+                <input type="text" name="username" class="form-control" required placeholder="<?php echo ($lang=='ur') ? 'یوزر نیم لکھیں...' : 'Enter Username...'; ?>">
             </div>
             <div class="mb-4 text-start">
-                <label class="form-label text-success fw-bold">پاسورڈ</label>
-                <input type="password" name="password" class="form-control" required placeholder="پاسورڈ لکھیں...">
+                <label class="form-label text-success fw-bold"><?php echo ($lang=='ur') ? 'پاسورڈ' : 'Password'; ?></label>
+                <input type="password" name="password" class="form-control" required placeholder="<?php echo ($lang=='ur') ? 'پاسورڈ لکھیں...' : 'Enter Password...'; ?>">
             </div>
-            <button type="submit" name="login" class="btn btn-success w-100 py-2">لاگ ان کریں</button>
+            <button type="submit" name="login" class="btn btn-success w-100 py-2 fw-bold shadow-sm"><?php echo ($lang=='ur') ? 'لاگ ان کریں' : 'Sign In'; ?></button>
         </form>
         
         <div class="mt-4 pt-2 border-top">
-            <a href="forgot_password.php" class="text-danger text-decoration-none small d-block mb-2">پاسورڈ بھول گئے؟ (Forgot Password)</a>
-            <a href="index.php" class="small text-muted text-decoration-none">← ہوم پیج پر واپس جائیں</a>
+            <a href="forgot_password.php" class="text-danger text-decoration-none small d-block mb-2"><?php echo ($lang=='ur') ? 'پاسورڈ بھول گئے؟ (Forgot Password)' : 'Forgot Password?'; ?></a>
+            <a href="index.php" class="small text-muted text-decoration-none"><?php echo ($lang=='ur') ? '← ہوم پیج پر واپس جائیں' : '← Back to Home'; ?></a>
         </div>
     </div>
 </body>

@@ -1,6 +1,7 @@
 <?php
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once 'db.php';
+require_once 'finance_accounting_bridge.php';
 
 if (!isset($_SESSION['user_id']) || !app_has_perm('manage_erp')) {
     header("Location: dashboard.php");
@@ -9,6 +10,103 @@ if (!isset($_SESSION['user_id']) || !app_has_perm('manage_erp')) {
 $role = $_SESSION['role'] ?? '';
 $user = ['id' => $_SESSION['user_id'], 'role' => $role];
 
+$cur_tenant_id = get_current_tenant_id($pdo);
+
+// Ensure tables and columns exist with bulletproof self-healing
+try {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS acc_vouchers (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        voucher_no VARCHAR(100) NOT NULL,
+        date DATE NOT NULL,
+        type VARCHAR(50) DEFAULT 'Journal',
+        reference VARCHAR(100) DEFAULT NULL,
+        description TEXT DEFAULT NULL,
+        department_id INT DEFAULT NULL,
+        status VARCHAR(50) DEFAULT 'Pending',
+        created_by INT DEFAULT NULL,
+        approved_by INT DEFAULT NULL,
+        approved_at DATETIME DEFAULT NULL,
+        system_type VARCHAR(50) DEFAULT 'Madrasa',
+        tenant_id INT NOT NULL DEFAULT 1,
+        is_deleted TINYINT(1) DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX (tenant_id),
+        INDEX (status)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS acc_ledger_entries (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        voucher_id INT NOT NULL,
+        account_id INT NOT NULL,
+        debit DECIMAL(15,2) DEFAULT 0.00,
+        credit DECIMAL(15,2) DEFAULT 0.00,
+        department_id INT DEFAULT NULL,
+        tenant_id INT NOT NULL DEFAULT 1,
+        INDEX (voucher_id),
+        INDEX (account_id),
+        INDEX (tenant_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS departments (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        status VARCHAR(50) DEFAULT 'Active',
+        system_type VARCHAR(50) DEFAULT 'Madrasa',
+        tenant_id INT DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS acc_audit_log (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        tenant_id INT NOT NULL DEFAULT 1,
+        voucher_id INT NOT NULL,
+        voucher_no VARCHAR(100) DEFAULT NULL,
+        action VARCHAR(50) NOT NULL,
+        user_id INT DEFAULT NULL,
+        user_name VARCHAR(100) DEFAULT NULL,
+        details TEXT DEFAULT NULL,
+        ip_address VARCHAR(50) DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX (voucher_id),
+        INDEX (tenant_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $vCols = $pdo->query("SHOW COLUMNS FROM acc_vouchers")->fetchAll(PDO::FETCH_COLUMN);
+    if (!in_array('approved_by', $vCols)) $pdo->exec("ALTER TABLE acc_vouchers ADD COLUMN approved_by INT DEFAULT NULL");
+    if (!in_array('approved_at', $vCols)) $pdo->exec("ALTER TABLE acc_vouchers ADD COLUMN approved_at DATETIME DEFAULT NULL");
+    if (!in_array('is_deleted', $vCols)) $pdo->exec("ALTER TABLE acc_vouchers ADD COLUMN is_deleted TINYINT(1) DEFAULT 0");
+    if (!in_array('system_type', $vCols)) $pdo->exec("ALTER TABLE acc_vouchers ADD COLUMN system_type VARCHAR(50) DEFAULT 'Madrasa'");
+    if (!in_array('created_by', $vCols)) $pdo->exec("ALTER TABLE acc_vouchers ADD COLUMN created_by INT DEFAULT NULL");
+    if (!in_array('department_id', $vCols)) $pdo->exec("ALTER TABLE acc_vouchers ADD COLUMN department_id INT DEFAULT NULL");
+    if (!in_array('tenant_id', $vCols)) $pdo->exec("ALTER TABLE acc_vouchers ADD COLUMN tenant_id INT NOT NULL DEFAULT 1");
+
+    $leCols = $pdo->query("SHOW COLUMNS FROM acc_ledger_entries")->fetchAll(PDO::FETCH_COLUMN);
+    if (!in_array('department_id', $leCols)) $pdo->exec("ALTER TABLE acc_ledger_entries ADD COLUMN department_id INT DEFAULT NULL");
+    if (!in_array('tenant_id', $leCols)) $pdo->exec("ALTER TABLE acc_ledger_entries ADD COLUMN tenant_id INT NOT NULL DEFAULT 1");
+
+    $dCols = $pdo->query("SHOW COLUMNS FROM departments")->fetchAll(PDO::FETCH_COLUMN);
+    if (!in_array('status', $dCols)) $pdo->exec("ALTER TABLE departments ADD COLUMN status VARCHAR(50) DEFAULT 'Active'");
+    if (!in_array('tenant_id', $dCols)) $pdo->exec("ALTER TABLE departments ADD COLUMN tenant_id INT DEFAULT 1");
+} catch (Throwable $e) {}
+
+if (!function_exists('acc_log_audit')) {
+    function acc_log_audit($pdo, $voucher_id, $voucher_no, $action, $user_id, $user_name, $details = '') {
+        try {
+            $stmt = $pdo->prepare("INSERT INTO acc_audit_log (voucher_id, voucher_no, action, user_id, user_name, details, ip_address, tenant_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+            $ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+            $tId = function_exists('get_current_tenant_id') ? (int)get_current_tenant_id() : 1;
+            $stmt->execute([$voucher_id, $voucher_no, $action, $user_id, $user_name, is_array($details) ? json_encode($details, JSON_UNESCAPED_UNICODE) : (string)$details, $ip, $tId]);
+        } catch (Throwable $e) {}
+    }
+}
+
+// Repair any orphan finance vouchers
+try {
+    if (function_exists('finance_accounting_repair_vouchers')) {
+        finance_accounting_repair_vouchers($pdo);
+    }
+} catch (Throwable $e) {}
+
 // Handle Actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_voucher'])) {
     $date = $_POST['date'] ?? date('Y-m-d');
@@ -16,10 +114,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_voucher'])) {
     $desc = $_POST['description'] ?? '';
     $ref = $_POST['reference'] ?? '';
     
-    // Auto-generate voucher number
+    // Auto-generate voucher number scoped by tenant
     $prefix = strtoupper(substr($type, 0, 1)) . 'V-';
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM acc_vouchers WHERE type = ?");
-    $stmt->execute([$type]);
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM acc_vouchers WHERE type = ? AND tenant_id = ?");
+    $stmt->execute([$type, $cur_tenant_id]);
     $count = $stmt->fetchColumn() + 1;
     $voucher_no = $prefix . str_pad($count, 5, '0', STR_PAD_LEFT);
     
@@ -39,6 +137,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_voucher'])) {
             if ($acc_id <= 0 && ($dr > 0 || $cr > 0)) {
                 throw new Exception("Ledger line has amount but no account selected.");
             }
+            if ($dr < 0 || $cr < 0) {
+                throw new Exception("منفی رقوم درج کرنا ممنوع ہے۔ (Negative amounts are not allowed)");
+            }
             if ($dr > 0 && $cr > 0) {
                 throw new Exception("One ledger line cannot have both debit and credit.");
             }
@@ -55,15 +156,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_voucher'])) {
             throw new Exception("Debits and Credits must balance. Dr: $total_debit, Cr: $total_credit");
         }
 
+        $sys = $_SESSION['system_type'] ?? 'Madrasa';
         $pdo->beginTransaction();
-        $stmt = $pdo->prepare("INSERT INTO acc_vouchers (voucher_no, date, type, reference, description, department_id, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)");
-        $stmt->execute([$voucher_no, $date, $type, $ref, $desc, $department_id, $user['id']]);
+        $stmt = $pdo->prepare("INSERT INTO acc_vouchers (voucher_no, date, type, reference, description, department_id, created_by, status, system_type, tenant_id) VALUES (?, ?, ?, ?, ?, ?, ?, 'Pending', ?, ?)");
+        $stmt->execute([$voucher_no, $date, $type, $ref, $desc, $department_id, $user['id'], $sys, $cur_tenant_id]);
         $voucher_id = $pdo->lastInsertId();
-        $entry_stmt = $pdo->prepare("INSERT INTO acc_ledger_entries (voucher_id, account_id, debit, credit, department_id) VALUES (?, ?, ?, ?, ?)");
+        $entry_stmt = $pdo->prepare("INSERT INTO acc_ledger_entries (voucher_id, account_id, debit, credit, department_id, tenant_id) VALUES (?, ?, ?, ?, ?, ?)");
         foreach ($clean_lines as $line) {
-            $entry_stmt->execute([$voucher_id, $line[0], $line[1], $line[2], $department_id]);
+            $entry_stmt->execute([$voucher_id, $line[0], $line[1], $line[2], $department_id, $cur_tenant_id]);
         }
         $pdo->commit();
+        acc_log_audit($pdo, $voucher_id, $voucher_no, 'CREATED', $user['id'], $_SESSION['name'] ?? 'Admin', ['total' => $total_debit, 'lines' => count($clean_lines)]);
         $msg = "Voucher $voucher_no created successfully!";
     } catch (Exception $e) {
         if ($pdo->inTransaction()) { $pdo->rollBack(); }
@@ -71,33 +174,137 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_voucher'])) {
     }
 }
 
+// Four-Eyes Approval
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status']) && $role === 'admin') {
     $v_id = (int)$_POST['voucher_id'];
     $new_status = $_POST['status'];
     if (in_array($new_status, ['Pending', 'Approved', 'Rejected'])) {
-        $pdo->prepare("UPDATE acc_vouchers SET status = ? WHERE id = ?")->execute([$new_status, $v_id]);
-        $msg = "Voucher status updated to $new_status.";
+        $vStmt = $pdo->prepare("SELECT v.*, (SELECT SUM(debit) FROM acc_ledger_entries WHERE voucher_id = v.id) as total_amount FROM acc_vouchers v WHERE v.id = ? AND v.tenant_id = ?");
+        $vStmt->execute([$v_id, $cur_tenant_id]);
+        $vRow = $vStmt->fetch(PDO::FETCH_ASSOC);
+        if ($vRow) {
+            $totalAmt = (float)($vRow['total_amount'] ?? 0);
+            $creatorId = (int)($vRow['created_by'] ?? 0);
+            if ($new_status === 'Approved' && $totalAmt > 50000 && $creatorId === (int)$user['id']) {
+                $err = "50 ہزار سے زائد رقم کے واؤچر (Rs. " . number_format($totalAmt) . ") کی منظوری کے لیے چار آنکھوں کا پروٹوکول (Four-Eyes Principle) لازمی ہے؛ کوئی دوسرا ایڈمنسٹریٹر منظوری دے گا۔";
+            } else {
+                $pdo->prepare("UPDATE acc_vouchers SET status = ?, approved_by = ?, approved_at = NOW() WHERE id = ? AND tenant_id = ?")->execute([$new_status, $user['id'], $v_id, $cur_tenant_id]);
+                acc_log_audit($pdo, $v_id, $vRow['voucher_no'], $new_status === 'Approved' ? 'APPROVED' : ($new_status === 'Rejected' ? 'REJECTED' : 'PENDING'), $user['id'], $_SESSION['name'] ?? 'Admin', ['status' => $new_status, 'amount' => $totalAmt]);
+                $msg = "Voucher status updated to $new_status.";
+            }
+        }
     }
 }
 
+// Reversal Voucher
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['reverse_voucher']) && $role === 'admin') {
+    $v_id = (int)$_POST['voucher_id'];
+    try {
+        $vStmt = $pdo->prepare("SELECT * FROM acc_vouchers WHERE id = ? AND tenant_id = ? AND (is_deleted = 0 OR is_deleted IS NULL)");
+        $vStmt->execute([$v_id, $cur_tenant_id]);
+        $orig = $vStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$orig) throw new Exception("Voucher not found.");
+        if ($orig['status'] !== 'Approved') throw new Exception("Only Approved vouchers can be reversed.");
+
+        $linesStmt = $pdo->prepare("SELECT * FROM acc_ledger_entries WHERE voucher_id = ? AND tenant_id = ?");
+        $linesStmt->execute([$v_id, $cur_tenant_id]);
+        $lines = $linesStmt->fetchAll(PDO::FETCH_ASSOC);
+        if (empty($lines)) throw new Exception("No ledger entries found to reverse.");
+
+        $pdo->beginTransaction();
+        $revNo = 'REV-' . $orig['voucher_no'];
+        $revDesc = "Reversal of " . $orig['voucher_no'] . ": " . ($orig['description'] ?? '');
+        $sys = $orig['system_type'] ?? 'Madrasa';
+        $insV = $pdo->prepare("INSERT INTO acc_vouchers (voucher_no, date, type, reference, description, department_id, created_by, approved_by, approved_at, status, system_type, tenant_id) VALUES (?, ?, 'Journal', ?, ?, ?, ?, ?, NOW(), 'Approved', ?, ?)");
+        $insV->execute([$revNo, date('Y-m-d'), $orig['voucher_no'], $revDesc, $orig['department_id'], $user['id'], $user['id'], $sys, $cur_tenant_id]);
+        $newVoucherId = (int)$pdo->lastInsertId();
+
+        $insE = $pdo->prepare("INSERT INTO acc_ledger_entries (voucher_id, account_id, debit, credit, department_id, tenant_id) VALUES (?, ?, ?, ?, ?, ?)");
+        foreach ($lines as $ln) {
+            // Swap debit and credit
+            $insE->execute([$newVoucherId, $ln['account_id'], $ln['credit'], $ln['debit'], $ln['department_id'], $cur_tenant_id]);
+        }
+
+        $pdo->prepare("UPDATE acc_vouchers SET status = 'Reversed' WHERE id = ? AND tenant_id = ?")->execute([$v_id, $cur_tenant_id]);
+
+        acc_log_audit($pdo, $v_id, $orig['voucher_no'], 'REVERSED', $user['id'], $_SESSION['name'] ?? 'Admin', "Reversed by voucher $revNo");
+        acc_log_audit($pdo, $newVoucherId, $revNo, 'REVERSAL_CREATED', $user['id'], $_SESSION['name'] ?? 'Admin', "Reversal of " . $orig['voucher_no']);
+
+        $pdo->commit();
+        $msg = "واؤچر {$orig['voucher_no']} کا ریورسل واؤچر ($revNo) کامیابی سے جاری کر دیا گیا ہے۔";
+    } catch (Exception $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        $err = "Reversal Failed: " . $e->getMessage();
+    }
+}
+
+// Delete Voucher (Only for Pending or Rejected)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_voucher']) && $role === 'admin') {
     $v_id = (int)$_POST['voucher_id'];
     try {
-        try { $pdo->prepare("UPDATE acc_vouchers SET is_deleted = 1 WHERE id = ?")->execute([$v_id]); } catch (Exception $e) { $pdo->prepare("DELETE FROM acc_vouchers WHERE id = ?")->execute([$v_id]); }
+        $chk = $pdo->prepare("SELECT status, voucher_no FROM acc_vouchers WHERE id = ? AND tenant_id = ?");
+        $chk->execute([$v_id, $cur_tenant_id]);
+        $row = $chk->fetch(PDO::FETCH_ASSOC);
+        if ($row && in_array($row['status'], ['Approved', 'Reversed'], true)) {
+            throw new Exception("منظور شدہ یا ریورس شدہ واؤچر حذف نہیں کیا جا سکتا۔ آڈٹ ٹریل برقرار رکھنے کے لیے ریورسل واؤچر استعمال کریں۔");
+        }
+        $pdo->prepare("UPDATE acc_vouchers SET is_deleted = 1 WHERE id = ? AND tenant_id = ?")->execute([$v_id, $cur_tenant_id]);
+        if ($row) {
+            acc_log_audit($pdo, $v_id, $row['voucher_no'], 'DELETED', $user['id'], $_SESSION['name'] ?? 'Admin');
+        }
         $msg = "Voucher deleted successfully.";
     } catch (Exception $e) {
-        $err = "Failed to delete voucher.";
+        $err = $e->getMessage();
     }
 }
 
-// Fetch Vouchers
-$vouchers = $pdo->query("SELECT v.*, u.name as creator_name, (SELECT SUM(debit) FROM acc_ledger_entries WHERE voucher_id = v.id) as total_amount FROM acc_vouchers v LEFT JOIN admins u ON v.created_by = u.id WHERE (v.is_deleted = 0 OR v.is_deleted IS NULL) ORDER BY v.date DESC, v.id DESC LIMIT 200")->fetchAll(PDO::FETCH_ASSOC);
+// Fetch Vouchers with System Type and Tenant Isolation
+$sys = $_SESSION['system_type'] ?? 'Madrasa';
+$sys_cond = ($sys === 'Masjid') ? "v.system_type = 'Masjid'" : "(v.system_type = 'Madrasa' OR v.system_type IS NULL OR v.system_type = '')";
 
-// Fetch Chart of Accounts for Dropdown
-$accounts_list = $pdo->query("SELECT id, code, name FROM acc_chart_of_accounts WHERE is_deleted = 0 ORDER BY code")->fetchAll(PDO::FETCH_ASSOC);
+$vouchers = [];
+try {
+    $v_stmt = $pdo->prepare("SELECT v.*, u.name as creator_name, (SELECT SUM(debit) FROM acc_ledger_entries WHERE voucher_id = v.id) as total_amount FROM acc_vouchers v LEFT JOIN admins u ON v.created_by = u.id WHERE (v.is_deleted = 0 OR v.is_deleted IS NULL) AND $sys_cond AND (v.tenant_id = ? OR v.tenant_id IS NULL OR v.tenant_id = 0) ORDER BY v.date DESC, v.id DESC LIMIT 200");
+    $v_stmt->execute([$cur_tenant_id]);
+    $vouchers = $v_stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Throwable $e) {
+    error_log('[acc_vouchers.php] v_stmt error: ' . $e->getMessage());
+    try {
+        $v_stmt = $pdo->prepare("SELECT v.*, (SELECT SUM(debit) FROM acc_ledger_entries WHERE voucher_id = v.id) as total_amount FROM acc_vouchers v WHERE (v.is_deleted = 0 OR v.is_deleted IS NULL) ORDER BY v.id DESC LIMIT 200");
+        $v_stmt->execute();
+        $vouchers = $v_stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Throwable $e2) {
+        $vouchers = [];
+    }
+}
 
-// Fetch Departments
-$departments_list = $pdo->query("SELECT id, name FROM departments WHERE status = 'Active' ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
+// Fetch Chart of Accounts for Dropdown (Tenant scoped)
+$accounts_list = [];
+try {
+    $acc_list_stmt = $pdo->prepare("SELECT id, code, name FROM acc_chart_of_accounts WHERE (is_deleted = 0 OR is_deleted IS NULL) AND (tenant_id = ? OR tenant_id IS NULL OR tenant_id = 0) ORDER BY code");
+    $acc_list_stmt->execute([$cur_tenant_id]);
+    $accounts_list = $acc_list_stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Throwable $e) {
+    try {
+        $accounts_list = $pdo->query("SELECT id, code, name FROM acc_chart_of_accounts WHERE (is_deleted = 0 OR is_deleted IS NULL) ORDER BY code")->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Throwable $e2) {
+        $accounts_list = [];
+    }
+}
+
+// Fetch Departments (Tenant scoped)
+$departments_list = [];
+try {
+    $dept_stmt = $pdo->prepare("SELECT id, name FROM departments WHERE (status = 'Active' OR status IS NULL) AND (tenant_id = ? OR tenant_id IS NULL OR tenant_id = 0) ORDER BY name");
+    $dept_stmt->execute([$cur_tenant_id]);
+    $departments_list = $dept_stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Throwable $e) {
+    try {
+        $departments_list = $pdo->query("SELECT id, name FROM departments ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Throwable $e2) {
+        $departments_list = [];
+    }
+}
 
 $title = "Vouchers - ERP Accounting";
 include 'header.php';
@@ -148,21 +355,34 @@ include 'header.php';
                             <td><small><?php echo e($v['description'] ?? '---'); ?></small></td>
                             <td class="text-end fw-bold">Rs. <?php echo number_format($v['total_amount'] ?? 0, 2); ?></td>
                             <td>
-                                <span class="badge bg-<?php echo $v['status']=='Approved'?'success':($v['status']=='Rejected'?'danger':'warning'); ?>">
+                                <span class="badge bg-<?php echo $v['status']=='Approved'?'success':($v['status']=='Rejected'?'danger':($v['status']=='Reversed'?'dark':'warning')); ?>">
                                     <?php echo e($v['status']); ?>
                                 </span>
                             </td>
                             <td><small><?php echo e($v['creator_name'] ?? 'System'); ?></small></td>
                             <td class="text-center">
-                                <button class="btn btn-sm btn-outline-primary me-1" onclick="viewVoucher(<?php echo $v['id']; ?>)"><i class="fas fa-eye"></i></button>
-                                <?php if ($role === 'admin' || $v['status'] === 'Pending'): ?>
-                                    <a href="acc_voucher_edit.php?id=<?php echo $v['id']; ?>" class="btn btn-sm btn-outline-warning me-1"><i class="fas fa-edit"></i></a>
-                                <?php endif; ?>
-                                <?php if ($role === 'admin'): ?>
-                                    <form method="POST" class="d-inline" onsubmit="return confirm('Delete this voucher?')">
-                                        <input type="hidden" name="voucher_id" value="<?php echo $v['id']; ?>">
-                                        <button type="submit" name="delete_voucher" class="btn btn-sm btn-outline-danger"><i class="fas fa-trash"></i></button>
-                                    </form>
+                                <button class="btn btn-sm btn-outline-primary me-1" onclick="viewVoucher(<?php echo $v['id']; ?>)" title="تفصیلات"><i class="fas fa-eye"></i></button>
+                                
+                                <?php if ($v['status'] === 'Pending'): ?>
+                                    <a href="acc_voucher_edit.php?id=<?php echo $v['id']; ?>" class="btn btn-sm btn-outline-warning me-1" title="ترمیم"><i class="fas fa-edit"></i></a>
+                                    <?php if ($role === 'admin'): ?>
+                                        <form method="POST" class="d-inline" onsubmit="return confirm('Delete this voucher?')">
+                                            <input type="hidden" name="voucher_id" value="<?php echo $v['id']; ?>">
+                                            <button type="submit" name="delete_voucher" class="btn btn-sm btn-outline-danger" title="حذف"><i class="fas fa-trash"></i></button>
+                                        </form>
+                                        <form method="POST" class="d-inline ms-1">
+                                            <input type="hidden" name="voucher_id" value="<?php echo $v['id']; ?>">
+                                            <input type="hidden" name="status" value="Approved">
+                                            <button type="submit" name="update_status" class="btn btn-sm btn-success" title="منظور کریں"><i class="fas fa-check"></i></button>
+                                        </form>
+                                    <?php endif; ?>
+                                <?php elseif ($v['status'] === 'Approved'): ?>
+                                    <?php if ($role === 'admin'): ?>
+                                        <form method="POST" class="d-inline ms-1" onsubmit="return confirm('کیا آپ واقعی اس منظور شدہ واؤچر کا ریورسل واؤچر (Reversal Voucher) جاری کرنا چاہتے ہیں؟')">
+                                            <input type="hidden" name="voucher_id" value="<?php echo $v['id']; ?>">
+                                            <button type="submit" name="reverse_voucher" class="btn btn-sm btn-outline-danger" title="ریورسل واؤچر بنائیں"><i class="fas fa-undo"></i> ریورس</button>
+                                        </form>
+                                    <?php endif; ?>
                                 <?php endif; ?>
                             </td>
                         </tr>

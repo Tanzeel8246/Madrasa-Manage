@@ -10,6 +10,17 @@ if (!isset($_SESSION['user_id']) || !app_has_perm('manage_erp')) {
 }
 
 $from_date = $_GET['from'] ?? date('Y-m-01');
+$inst_title = 'مدرسہ اشرف المدارس';
+try {
+    $cur_t = function_exists('get_current_tenant_id') ? get_current_tenant_id($pdo) : 1;
+    $sys = $_SESSION['system_type'] ?? 'Madrasa';
+    $sStmt = $pdo->prepare("SELECT madrasa_name, masjid_name FROM settings WHERE (tenant_id = ? OR tenant_id IS NULL OR tenant_id = 1) LIMIT 1");
+    $sStmt->execute([$cur_t]);
+    $sRow = $sStmt->fetch(PDO::FETCH_ASSOC);
+    if ($sRow) {
+        $inst_title = ($sys === 'Masjid') ? ($sRow['masjid_name'] ?: 'مسجد اشرف المدارس') : ($sRow['madrasa_name'] ?: 'مدرسہ اشرف المدارس');
+    }
+} catch (Throwable $e) {}
 $to_date = $_GET['to'] ?? date('Y-m-t');
 $dept_id = !empty($_GET['department_id']) ? (int)$_GET['department_id'] : null;
 
@@ -32,7 +43,7 @@ $query = "
            SUM(e.credit) as total_credit
     FROM acc_chart_of_accounts a
     JOIN acc_ledger_entries e ON a.id = e.account_id
-    JOIN acc_vouchers v ON e.voucher_id = v.id AND v.status != 'Rejected' AND (v.is_deleted = 0 OR v.is_deleted IS NULL)
+    JOIN acc_vouchers v ON e.voucher_id = v.id AND v.status = 'Approved' AND (v.is_deleted = 0 OR v.is_deleted IS NULL)
     WHERE a.type IN ('Revenue', 'Expense') AND v.date BETWEEN ? AND ? AND a.is_deleted = 0
     $dept_sql
     GROUP BY a.id, a.code, a.name, a.type
@@ -76,15 +87,15 @@ $net_income = $total_revenue - $total_expense;
         <form method="GET" class="row g-2 align-items-end">
             <div class="col-md-3">
                 <label class="fw-bold">From Date</label>
-                <input type="date" name="from" class="form-control" value="<?php echo e($from_date); ?>" required>
+                <input type="date" name="from" id="incFrom" class="form-control" value="<?php echo e($from_date); ?>" onchange="if(this.value && document.getElementById('incTo').value) this.form.submit();" required>
             </div>
             <div class="col-md-3">
                 <label class="fw-bold">To Date</label>
-                <input type="date" name="to" class="form-control" value="<?php echo e($to_date); ?>" required>
+                <input type="date" name="to" id="incTo" class="form-control" value="<?php echo e($to_date); ?>" onchange="if(this.value && document.getElementById('incFrom').value) this.form.submit();" required>
             </div>
             <div class="col-md-3">
                 <label class="fw-bold">شعبہ (Department Filter)</label>
-                <select name="department_id" class="form-select">
+                <select name="department_id" class="form-select" onchange="this.form.submit()">
                     <option value="">-- All Departments --</option>
                     <?php foreach($departments as $d): ?>
                         <option value="<?php echo $d['id']; ?>" <?php echo $dept_id == $d['id'] ? 'selected' : ''; ?>><?php echo $d['name']; ?></option>
@@ -100,7 +111,7 @@ $net_income = $total_revenue - $total_expense;
 
     <div id="printableArea" class="bg-white p-5 border rounded shadow-sm">
         <div class="text-center border-bottom border-2 border-dark mb-4 pb-3">
-            <h2 class="fw-bold text-success m-0">مدرسہ اشرف المدارس</h2>
+            <h2 class="fw-bold text-success m-0"><?php echo htmlspecialchars($inst_title); ?></h2>
             <h4 class="mt-2 fw-bold">Income Statement / گوشوارہ آمدن و اخراجات</h4>
             <p class="mb-1 fw-bold fs-6 text-muted">
                 Period: <?php echo date('d-M-Y', strtotime($from_date)); ?> to <?php echo date('d-M-Y', strtotime($to_date)); ?>

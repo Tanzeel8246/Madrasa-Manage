@@ -10,6 +10,17 @@ if (!isset($_SESSION['user_id']) || !app_has_perm('manage_erp')) {
 }
 
 $as_of_date = $_GET['as_of'] ?? date('Y-m-d');
+$inst_title = 'مدرسہ اشرف المدارس';
+try {
+    $cur_t = function_exists('get_current_tenant_id') ? get_current_tenant_id($pdo) : 1;
+    $sys = $_SESSION['system_type'] ?? 'Madrasa';
+    $sStmt = $pdo->prepare("SELECT madrasa_name, masjid_name FROM settings WHERE (tenant_id = ? OR tenant_id IS NULL OR tenant_id = 1) LIMIT 1");
+    $sStmt->execute([$cur_t]);
+    $sRow = $sStmt->fetch(PDO::FETCH_ASSOC);
+    if ($sRow) {
+        $inst_title = ($sys === 'Masjid') ? ($sRow['masjid_name'] ?: 'مسجد اشرف المدارس') : ($sRow['madrasa_name'] ?: 'مدرسہ اشرف المدارس');
+    }
+} catch (Throwable $e) {}
 
 finance_accounting_backfill($pdo, null, $as_of_date);
 
@@ -20,7 +31,7 @@ $query = "
            SUM(CASE WHEN v.id IS NOT NULL THEN e.credit ELSE 0 END) as total_credit
     FROM acc_chart_of_accounts a
     LEFT JOIN acc_ledger_entries e ON a.id = e.account_id
-    LEFT JOIN acc_vouchers v ON e.voucher_id = v.id AND v.status != 'Rejected' AND (v.is_deleted = 0 OR v.is_deleted IS NULL) AND v.date <= ?
+    LEFT JOIN acc_vouchers v ON e.voucher_id = v.id AND v.status = 'Approved' AND (v.is_deleted = 0 OR v.is_deleted IS NULL) AND v.date <= ?
     WHERE a.is_deleted = 0
     GROUP BY a.id, a.code, a.name, a.type, a.parent_id
     ORDER BY a.type, a.code
@@ -43,27 +54,34 @@ foreach($accounts as $acc) {
     $dr = (float)($acc['total_debit'] ?? 0);
     $cr = (float)($acc['total_credit'] ?? 0);
     
+    $rawType = ucfirst(strtolower(trim((string)($acc['type'] ?? ''))));
+    $isRev = ($rawType === 'Revenue' || $rawType === 'Income');
+    $isExp = ($rawType === 'Expense');
+    $isAsset = ($rawType === 'Asset');
+    $isLiab = ($rawType === 'Liability');
+    $isEq = ($rawType === 'Equity');
+
     // Revenue and Expenses (For Retained Earnings)
-    if ($acc['type'] == 'Revenue') {
+    if ($isRev) {
         $retained_earnings += ($cr - $dr);
-    } else if ($acc['type'] == 'Expense') {
+    } else if ($isExp) {
         $retained_earnings -= ($dr - $cr);
     }
     
     // Assets, Liabilities, Equity
-    if ($acc['type'] == 'Asset') {
+    if ($isAsset) {
         $bal = $dr - $cr;
         if ($bal != 0) {
             $assets[] = ['code' => $acc['code'], 'name' => $acc['name'], 'balance' => $bal];
             $total_assets += $bal;
         }
-    } else if ($acc['type'] == 'Liability') {
+    } else if ($isLiab) {
         $bal = $cr - $dr;
         if ($bal != 0) {
             $liabilities[] = ['code' => $acc['code'], 'name' => $acc['name'], 'balance' => $bal];
             $total_liabilities += $bal;
         }
-    } else if ($acc['type'] == 'Equity') {
+    } else if ($isEq) {
         $bal = $cr - $dr;
         if ($bal != 0) {
             $equity[] = ['code' => $acc['code'], 'name' => $acc['name'], 'balance' => $bal];
@@ -73,8 +91,18 @@ foreach($accounts as $acc) {
 }
 
 // Add Retained Earnings to Equity
-if ($retained_earnings != 0) {
-    $equity[] = ['code' => '3999', 'name' => 'Retained Earnings (خالص منافع/نقصان)', 'balance' => $retained_earnings];
+$retained_merged = false;
+foreach ($equity as &$eqItem) {
+    if ($eqItem['code'] === '30002' || $eqItem['code'] === '3002') {
+        $eqItem['balance'] += $retained_earnings;
+        $total_equity += $retained_earnings;
+        $retained_merged = true;
+        break;
+    }
+}
+unset($eqItem);
+if (!$retained_merged && $retained_earnings != 0) {
+    $equity[] = ['code' => '30002', 'name' => 'Retained Surplus / Deficit (خالص فاضل / خسارہ فنڈ)', 'balance' => $retained_earnings];
     $total_equity += $retained_earnings;
 }
 
@@ -87,7 +115,7 @@ $total_liab_and_equity = $total_liabilities + $total_equity;
         <form method="GET" class="row g-2 align-items-end">
             <div class="col-md-4">
                 <label class="fw-bold">کس تاریخ تک (As of Date)</label>
-                <input type="date" name="as_of" class="form-control" value="<?php echo e($as_of_date); ?>" required>
+                <input type="date" name="as_of" class="form-control" value="<?php echo e($as_of_date); ?>" onchange="this.form.submit()" required>
             </div>
             <div class="col-md-3">
                 <button type="submit" class="btn btn-primary w-100 mb-1">رپورٹ دیکھیں</button>
@@ -100,7 +128,7 @@ $total_liab_and_equity = $total_liabilities + $total_equity;
 
     <div id="printableArea" class="bg-white p-5 border rounded shadow-sm">
         <div class="text-center border-bottom border-2 border-dark mb-4 pb-3">
-            <h2 class="fw-bold text-success m-0">مدرسہ اشرف المدارس</h2>
+            <h2 class="fw-bold text-success m-0"><?php echo htmlspecialchars($inst_title); ?></h2>
             <h4 class="mt-2 fw-bold">بیلنس شیٹ (Balance Sheet)</h4>
             <p class="mb-1 fw-bold fs-6 text-muted">As of: <?php echo date('d-M-Y', strtotime($as_of_date)); ?></p>
         </div>
@@ -114,7 +142,7 @@ $total_liab_and_equity = $total_liabilities + $total_equity;
                         <?php foreach($assets as $a): ?>
                         <tr>
                             <td><span class="text-muted fs-6 me-2"><?php echo $a['code']; ?></span> <?php echo $a['name']; ?></td>
-                            <td class="text-end fw-bold text-primary"><?php echo number_format($a['balance'], 2); ?></td>
+                            <td class="text-end fw-bold text-primary"><span dir="ltr" class="d-inline-block"><?php echo number_format($a['balance'], 2); ?></span></td>
                         </tr>
                         <?php endforeach; ?>
                         <?php if(empty($assets)): ?>
@@ -124,7 +152,7 @@ $total_liab_and_equity = $total_liabilities + $total_equity;
                     <tfoot class="border-top border-2">
                         <tr>
                             <th class="fs-5">کل اثاثہ جات (Total Assets):</th>
-                            <th class="text-end fs-4 text-primary"><?php echo number_format($total_assets, 2); ?></th>
+                            <th class="text-end fs-4 text-primary"><span dir="ltr" class="d-inline-block"><?php echo number_format($total_assets, 2); ?></span></th>
                         </tr>
                     </tfoot>
                 </table>
@@ -133,13 +161,13 @@ $total_liab_and_equity = $total_liabilities + $total_equity;
             <!-- Liabilities & Equity -->
             <div class="col-md-6">
                 <!-- Liabilities -->
-                <h4 class="text-danger fw-bold border-bottom pb-2 mb-3"><i class="fas fa-hand-holding-usd me-2"></i> واجبات (Liabilities)</h4>
+                <h4 class="text-danger fw-bold border-bottom pb-2 mb-3"><i class="fas fa-hand-holding-usd me-2"></i> واجبات و مخصوص فنڈز (Liabilities & Restricted Funds)</h4>
                 <table class="table table-borderless table-sm fs-5 mb-4">
                     <tbody>
                         <?php foreach($liabilities as $l): ?>
                         <tr>
                             <td><span class="text-muted fs-6 me-2"><?php echo $l['code']; ?></span> <?php echo $l['name']; ?></td>
-                            <td class="text-end fw-bold text-danger"><?php echo number_format($l['balance'], 2); ?></td>
+                            <td class="text-end fw-bold text-danger"><span dir="ltr" class="d-inline-block"><?php echo number_format($l['balance'], 2); ?></span></td>
                         </tr>
                         <?php endforeach; ?>
                         <?php if(empty($liabilities)): ?>
@@ -149,7 +177,7 @@ $total_liab_and_equity = $total_liabilities + $total_equity;
                     <tfoot class="border-top border-1">
                         <tr>
                             <th class="fs-6">کل واجبات (Total Liabilities):</th>
-                            <th class="text-end fs-5 text-danger"><?php echo number_format($total_liabilities, 2); ?></th>
+                            <th class="text-end fs-5 text-danger"><span dir="ltr" class="d-inline-block"><?php echo number_format($total_liabilities, 2); ?></span></th>
                         </tr>
                     </tfoot>
                 </table>
@@ -161,7 +189,7 @@ $total_liab_and_equity = $total_liabilities + $total_equity;
                         <?php foreach($equity as $e): ?>
                         <tr>
                             <td><span class="text-muted fs-6 me-2"><?php echo $e['code']; ?></span> <?php echo $e['name']; ?></td>
-                            <td class="text-end fw-bold text-info"><?php echo number_format($e['balance'], 2); ?></td>
+                            <td class="text-end fw-bold text-info"><span dir="ltr" class="d-inline-block"><?php echo number_format($e['balance'], 2); ?></span></td>
                         </tr>
                         <?php endforeach; ?>
                         <?php if(empty($equity)): ?>
@@ -171,7 +199,7 @@ $total_liab_and_equity = $total_liabilities + $total_equity;
                     <tfoot class="border-top border-1">
                         <tr>
                             <th class="fs-6">کل سرمایہ (Total Equity):</th>
-                            <th class="text-end fs-5 text-info"><?php echo number_format($total_equity, 2); ?></th>
+                            <th class="text-end fs-5 text-info"><span dir="ltr" class="d-inline-block"><?php echo number_format($total_equity, 2); ?></span></th>
                         </tr>
                     </tfoot>
                 </table>
@@ -181,7 +209,7 @@ $total_liab_and_equity = $total_liabilities + $total_equity;
                         <tr>
                             <th class="fs-5">کل واجبات و سرمایہ (Total Liab & Eq):</th>
                             <th class="text-end fs-4 <?php echo abs($total_assets - $total_liab_and_equity) < 0.01 ? 'text-success' : 'text-danger'; ?>">
-                                <?php echo number_format($total_liab_and_equity, 2); ?>
+                                <span dir="ltr" class="d-inline-block"><?php echo number_format($total_liab_and_equity, 2); ?></span>
                             </th>
                         </tr>
                     </tfoot>
@@ -191,7 +219,7 @@ $total_liab_and_equity = $total_liabilities + $total_equity;
 
         <?php if (abs($total_assets - $total_liab_and_equity) > 0.01): ?>
         <div class="alert alert-danger mt-5 fw-bold text-center fs-5">
-            <i class="fas fa-exclamation-triangle me-2"></i> بیلنس شیٹ برابر نہیں ہے! (Out of balance by <?php echo number_format(abs($total_assets - $total_liab_and_equity), 2); ?>)
+            <i class="fas fa-exclamation-triangle me-2"></i> بیلنس شیٹ برابر نہیں ہے! (Out of balance by <span dir="ltr"><?php echo number_format(abs($total_assets - $total_liab_and_equity), 2); ?></span>)
         </div>
         <?php else: ?>
         <div class="alert alert-success mt-5 fw-bold text-center fs-5">

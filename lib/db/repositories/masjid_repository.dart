@@ -1,5 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 import '../../db_helper.dart';
+import '../../utils/data_refresh_bus.dart';
 
 class MasjidRepository {
   final DBHelper _dbHelper;
@@ -66,6 +67,20 @@ class MasjidRepository {
     }
   }
 
+  Future<int> markMaktabAttendance(Map<String, dynamic> data) async {
+    final db = await _db;
+    final values = Map<String, dynamic>.from(data);
+    values['is_synced'] = 0;
+    final id = await db.insert(
+      'maktab_attendance',
+      values,
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+
+    DataRefreshBus.notify(DataDomain.masjid, action: 'mark_maktab_att', entityId: id);
+    return id;
+  }
+
   Future<List<Map<String, dynamic>>> getMasjidAssets() async {
     final db = await _db;
     try {
@@ -104,5 +119,16 @@ class MasjidRepository {
     } catch (_) {
       return [];
     }
+  }
+
+  Future<int> insertMasjidFinance(Map<String, dynamic> data) async {
+    final db = await _db;
+    final values = Map<String, dynamic>.from(data);
+    values['is_synced'] = 0;
+    final id = await db.insert('masjid_finance', values);
+
+    DataRefreshBus.notify(DataDomain.masjid, action: 'masjid_finance', entityId: id);
+    DataRefreshBus.notify(DataDomain.finance, action: 'masjid_finance', entityId: id);
+    return id;
   }
 }

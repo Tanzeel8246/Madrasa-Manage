@@ -53,9 +53,19 @@ class SyncConfig {
     'job_applicants',
     'web_pages',
     'announcements',
+    'course_structure',
+    'course_subjects',
+    'student_course_enrollment',
+    'exam_subject_results',
+    'student_year_promotion',
   ];
 
   static const Map<String, String> apiKeyMap = {
+    'course_structure': 'course_structure',
+    'course_subjects': 'course_subjects',
+    'student_course_enrollment': 'student_course_enrollment',
+    'exam_subject_results': 'exam_subject_results',
+    'student_year_promotion': 'student_year_promotion',
     'finance': 'finance_entries',
     'masjid_finance': 'masjid_finance_entries',
     'heads': 'heads',
@@ -133,8 +143,8 @@ class SyncConfig {
     'acc_ledger_entries': 'manage_erp',
     'acc_payroll': 'manage_stipends',
     'acc_invoices': 'manage_erp',
-    'in_kind_donations': 'manage_finance',
-    'masjid_assets': 'manage_finance',
+    'in_kind_donations': 'manage_in_kind_donations',
+    'masjid_assets': 'manage_assets',
     'masjid_finance': 'manage_finance',
     'maktab_students': 'manage_students',
     'maktab_teachers': 'manage_teachers',
@@ -159,5 +169,10 @@ class SyncConfig {
     'job_applicants': 'manage_teachers',
     'web_pages': 'manage_notices',
     'announcements': 'manage_notices',
+    'course_structure': 'manage_classes',
+    'course_subjects': 'manage_classes',
+    'student_course_enrollment': 'manage_students',
+    'exam_subject_results': 'manage_exams',
+    'student_year_promotion': 'manage_classes',
   };
 }

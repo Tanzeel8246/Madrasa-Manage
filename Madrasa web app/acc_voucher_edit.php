@@ -17,6 +17,9 @@ if (!$voucher) {
 }
 
 // Ensure non-admins can only edit pending vouchers (or according to business logic, here we allow admin to edit any, or others if pending)
+if ($voucher['status'] === 'Approved' || $voucher['status'] === 'Reversed') {
+    die("<div style='font-family:sans-serif;padding:40px;text-align:center;direction:rtl;'><h2>منظور شدہ واؤچر میں براہِ راست ترمیم ممنوع ہے!</h2><p style='color:#c00;font-size:16px;'>محاسباتی اصولوں اور آڈٹ ٹریل کے تحفظ کے لیے، منظور شدہ واؤچر کو ترمیم نہیں کیا جا سکتا۔ اگر کوئی تصحیح درکار ہو تو واؤچر لسٹ سے اس کا ریورسل واؤچر (Reversal Voucher) جاری کریں۔</p><a href='acc_vouchers.php' style='display:inline-block;padding:10px 20px;background:#284D3D;color:#fff;text-decoration:none;border-radius:6px;'>واپس واؤچرز</a></div>");
+}
 if ($role !== 'admin' && $voucher['status'] !== 'Pending') {
     die("Only admin can edit approved vouchers.");
 }

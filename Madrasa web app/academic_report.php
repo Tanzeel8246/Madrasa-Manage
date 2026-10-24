@@ -1,6 +1,21 @@
 <?php 
-ini_set('display_errors', 1); ini_set('display_startup_errors', 1); error_reporting(E_ALL);
-require_once 'db.php'; 
+session_start();
+require_once 'db.php';
+
+$sys_type = $_SESSION['system_type'] ?? 'Madrasa';
+$user_role = strtolower(trim((string)($_SESSION['role'] ?? '')));
+$is_admin = in_array($user_role, ['admin', 'superadmin', 'administrator'], true);
+$p_needed = ($sys_type === 'Masjid') ? 'manage_masjid_academic_entry' : 'manage_academic_entry';
+$p_alt1 = ($sys_type === 'Masjid') ? 'manage_masjid_academic_dashboard' : 'manage_academic_dashboard';
+$p_alt2 = ($sys_type === 'Masjid') ? 'manage_masjid_academics' : 'manage_academics';
+$p_alt3 = ($sys_type === 'Masjid') ? 'manage_masjid_hifz' : 'manage_hifz';
+if (!$is_admin && !app_has_perm($p_needed) && !app_has_perm($p_alt1) && !app_has_perm($p_alt2) && !app_has_perm($p_alt3)) {
+    include 'header.php';
+    echo "<div class='alert alert-danger m-4 text-center fw-bold'>آپ کو تعلیمی رپورٹ اندراج کی اجازت نہیں ہے۔</div>";
+    include 'footer.php';
+    exit;
+}
+
 if (empty($_GET['class']) && empty($_POST['class_name'])) {
     header('Location: academic_entry_dashboard.php');
     exit;
@@ -12,6 +27,7 @@ include 'header.php';
 if (isset($_POST['save_academic'])) {
     try {
         $date = $_POST['date'] ?? date('Y-m-d');
+        $cur_tenant_id = (int)get_current_tenant_id();
         $class_name = $_POST['class_name'] ?? '';
         $subject = $_POST['subject'] ?? '';
         
@@ -23,15 +39,20 @@ if (isset($_POST['save_academic'])) {
             $pdo->beginTransaction();
             foreach ($std_ids as $std_id) {
                 // Remove existing reports for this student, date, and subject
-                $pdo->prepare("DELETE FROM academic_reports WHERE student_id = ? AND date = ? AND subject = ?")->execute([$std_id, $date, $subject]);
+                $pdo->prepare("DELETE FROM academic_reports WHERE student_id = ? AND date = ? AND subject = ? AND tenant_id = ?")->execute([$std_id, $date, $subject, $cur_tenant_id]);
                 
                 $lesson = trim($lessons[$std_id] ?? '');
                 $grade = trim($grades[$std_id] ?? '');
                 
                 // Save if there's any data
                 if ($lesson !== '' || $grade !== '') {
-                    $stmt = $pdo->prepare("INSERT INTO academic_reports (student_id, date, class_name, subject, lesson_details, grade) VALUES (?, ?, ?, ?, ?, ?)");
-                    $stmt->execute([$std_id, $date, $class_name, $subject, $lesson, $grade]);
+                    try {
+                        $stmt = $pdo->prepare("INSERT INTO academic_reports (student_id, date, class_name, subject, lesson_details, grade, is_deleted, tenant_id) VALUES (?, ?, ?, ?, ?, ?, 0, ?)");
+                        $stmt->execute([$std_id, $date, $class_name, $subject, $lesson, $grade, $cur_tenant_id]);
+                    } catch (Exception $eIns) {
+                        $stmt = $pdo->prepare("INSERT INTO academic_reports (student_id, date, class_name, subject, lesson_details, grade, tenant_id) VALUES (?, ?, ?, ?, ?, ?, ?)");
+                        $stmt->execute([$std_id, $date, $class_name, $subject, $lesson, $grade, $cur_tenant_id]);
+                    }
                 }
             }
             $pdo->commit();
@@ -47,32 +68,39 @@ if (isset($_POST['save_academic'])) {
 
 
 // 2. فلٹرز کی وصولی
+$cur_tenant_id = (int)get_current_tenant_id();
 $selected_date = $_GET['date'] ?? date('Y-m-d');
 $selected_class = $_GET['class'] ?? '';
 $selected_subject = $_GET['subject'] ?? '';
 
 function academic_normalize_class($value) {
     $value = trim((string)$value);
-    $value = str_replace(['ٰ', 'ى', 'ي', 'ك'], ['', 'ی', 'ی', 'ک'], $value);
+    $value = str_replace(['ٰ', 'ى', 'ي', 'ك', 'آ', 'آ'], ['', 'ی', 'ی', 'ک', 'ا', 'ا'], $value);
     $value = preg_replace('/\s+/u', '', $value);
     return function_exists('mb_strtolower') ? mb_strtolower($value, 'UTF-8') : strtolower($value);
 }
 
 // 3. کلاسز لانا
-$classes_data = get_allowed_classes($pdo);
+$classes_data = get_allowed_classes($pdo, 'id ASC', null, null, $sys_type);
+$allowed_class_names = array_values(array_filter(array_unique(array_column($classes_data, 'name'))));
+
+// Verify selected_class against allowed classes for non-admin
+if (!$is_admin && !empty($selected_class) && !in_array($selected_class, $allowed_class_names, true)) {
+    $selected_class = !empty($allowed_class_names) ? $allowed_class_names[0] : '';
+}
 
 // منتخب کلاس کے مضامین نکالنا
 $available_subjects = [];
 if ($selected_class) {
-    $stmt = $pdo->prepare("SELECT * FROM classes WHERE name = ?");
-    $stmt->execute([$selected_class]);
+    $stmt = $pdo->prepare("SELECT * FROM classes WHERE name = ? AND tenant_id = ?");
+    $stmt->execute([$selected_class, $cur_tenant_id]);
     $c = $stmt->fetch(PDO::FETCH_ASSOC);
     
     if ($c) {
         $is_hifz = ($c['class_type'] == 'Hifz/Nazira');
         
-        $stmt_p = $pdo->prepare("SELECT books FROM class_periods WHERE class_id = ? AND books IS NOT NULL AND books != ''");
-        $stmt_p->execute([$c['id']]);
+        $stmt_p = $pdo->prepare("SELECT books FROM class_periods WHERE class_id = ? AND tenant_id = ? AND books IS NOT NULL AND books != ''");
+        $stmt_p->execute([$c['id'], $cur_tenant_id]);
         $periods = $stmt_p->fetchAll(PDO::FETCH_ASSOC);
         
         if (!empty($periods)) {
@@ -105,28 +133,93 @@ if ($selected_class) {
 $students = [];
 $existing_reports = [];
 if ($selected_class && $selected_subject) {
+    $sys_type = $_SESSION['system_type'] ?? 'Madrasa';
+    $sys_cond = ($sys_type === 'Masjid') ? "system_type = 'Masjid'" : "(system_type = 'Madrasa' OR system_type IS NULL OR system_type = '')";
+
     $studentColumns = $pdo->query("SHOW COLUMNS FROM students")->fetchAll(PDO::FETCH_COLUMN);
     $classExpr = in_array('class_name', $studentColumns, true)
         ? "COALESCE(NULLIF(class, ''), NULLIF(class_name, ''))"
         : "class";
-    $stmt = $pdo->query("SELECT id, name, father_name, admission_number, $classExpr AS student_class FROM students WHERE (LOWER(TRIM(status)) IN ('active', 'present', '') OR status='حاضر' OR status IS NULL) AND (is_deleted = 0 OR is_deleted IS NULL) ORDER BY admission_number ASC");
-    $students = array_values(array_filter($stmt->fetchAll(PDO::FETCH_ASSOC), function($student) use ($selected_class) {
-        return academic_normalize_class($student['student_class'] ?? '') === academic_normalize_class($selected_class);
+    $sel_date_esc = $pdo->quote($selected_date);
+    $stmt = $pdo->query("SELECT id, name, father_name, admission_number, admission_date, graduation_date, status, alumni_category, leaving_reason, $classExpr AS student_class FROM students WHERE tenant_id = $cur_tenant_id AND $sys_cond AND (
+        (LOWER(TRIM(status)) IN ('active', 'present', '') OR status='حاضر' OR status IS NULL)
+        OR (status='Alumni' AND (graduation_date >= $sel_date_esc OR graduation_date IS NULL OR graduation_date = '' OR graduation_date >= DATE_SUB($sel_date_esc, INTERVAL 6 MONTH)))
+        OR (id IN (SELECT student_id FROM academic_reports WHERE date = $sel_date_esc AND tenant_id = $cur_tenant_id))
+        OR (id IN (SELECT student_id FROM attendance WHERE date = $sel_date_esc AND tenant_id = $cur_tenant_id))
+        OR (id IN (SELECT student_id FROM period_attendance WHERE date = $sel_date_esc AND tenant_id = $cur_tenant_id))
+    ) AND (is_deleted = 0 OR is_deleted IS NULL) ORDER BY admission_number ASC");
+    $students = array_values(array_filter($stmt->fetchAll(PDO::FETCH_ASSOC), function($student) use ($selected_class, $selected_date) {
+        if (academic_normalize_class($student['student_class'] ?? '') !== academic_normalize_class($selected_class)) return false;
+        if (is_student_inactive($student, $selected_date)) return false;
+        $adm = !empty($student['admission_date']) ? substr($student['admission_date'], 0, 10) : '';
+        if ($adm && $selected_date < $adm) return false;
+        $grad = !empty($student['graduation_date']) ? substr($student['graduation_date'], 0, 10) : '';
+        if ($grad && $selected_date > $grad) return false;
+        return true;
     }));
+
+    if (empty($students)) {
+        try {
+            $m_stmt = $pdo->query("SELECT id, name, father_name, admission_number, admission_date, graduation_date, status, alumni_category, leaving_reason, $classExpr AS student_class FROM maktab_students WHERE tenant_id = $cur_tenant_id AND (
+                (LOWER(TRIM(status)) IN ('active', 'present', '') OR status='حاضر' OR status IS NULL)
+                OR (status='Alumni' AND (graduation_date >= $sel_date_esc OR graduation_date IS NULL OR graduation_date = '' OR graduation_date >= DATE_SUB($sel_date_esc, INTERVAL 6 MONTH)))
+                OR (id IN (SELECT student_id FROM academic_reports WHERE date = $sel_date_esc AND tenant_id = $cur_tenant_id))
+                OR (id IN (SELECT student_id FROM attendance WHERE date = $sel_date_esc AND tenant_id = $cur_tenant_id))
+                OR (id IN (SELECT student_id FROM period_attendance WHERE date = $sel_date_esc AND tenant_id = $cur_tenant_id))
+            ) AND (is_deleted = 0 OR is_deleted IS NULL) ORDER BY admission_number ASC");
+            $students = array_values(array_filter($m_stmt->fetchAll(PDO::FETCH_ASSOC), function($student) use ($selected_class, $selected_date) {
+                if (academic_normalize_class($student['student_class'] ?? '') !== academic_normalize_class($selected_class)) return false;
+                if (is_student_inactive($student, $selected_date)) return false;
+                $adm = !empty($student['admission_date']) ? substr($student['admission_date'], 0, 10) : '';
+                if ($adm && $selected_date < $adm) return false;
+                $grad = !empty($student['graduation_date']) ? substr($student['graduation_date'], 0, 10) : '';
+                if ($grad && $selected_date > $grad) return false;
+                return true;
+            }));
+        } catch (Exception $e) {}
+    }
     
     // پہلے سے موجود رپورٹ لانا
-    $stmt = $pdo->prepare("SELECT student_id, lesson_details, grade FROM academic_reports WHERE class_name = ? AND subject = ? AND date = ?");
-    $stmt->execute([$selected_class, $selected_subject, $selected_date]);
+    $clean_cls = str_replace(' ', '', $selected_class);
+    $stmt = $pdo->prepare("SELECT student_id, lesson_details, grade FROM academic_reports WHERE (class_name = ? OR REPLACE(class_name, ' ', '') = ?) AND subject = ? AND date = ? AND tenant_id = ?");
+    $stmt->execute([$selected_class, $clean_cls, $selected_subject, $selected_date, $cur_tenant_id]);
     $reports = $stmt->fetchAll(PDO::FETCH_ASSOC);
     foreach($reports as $r) {
         $existing_reports[$r['student_id']] = $r;
     }
+
+    // 5. حاضری ریکارڈ لانا اور خودکار اسٹیٹس میپ کرنا
+    $att_status_map = [];
+    try {
+        $stmt_att = $pdo->prepare("SELECT student_id, status, shift FROM attendance WHERE date = ? AND tenant_id = ?");
+        $stmt_att->execute([$selected_date, $cur_tenant_id]);
+        $atts = $stmt_att->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($atts as $a) {
+            $sid = (int)$a['student_id'];
+            $st = trim((string)$a['status']);
+            $st_lower = strtolower($st);
+            if ($st === 'A' || strpos($st_lower, 'absent') !== false || strpos($st, 'غیر حاضر') !== false || strpos($st, 'غائب') !== false) {
+                $att_status_map[$sid] = 'غیر حاضر';
+            } elseif ($st === 'L' || strpos($st_lower, 'leave') !== false || strpos($st, 'رخصت') !== false || strpos($st, 'چھٹی') !== false) {
+                if (!isset($att_status_map[$sid]) || $att_status_map[$sid] !== 'غیر حاضر') {
+                    $att_status_map[$sid] = 'رخصت';
+                }
+            } elseif ($st === 'P' || strpos($st_lower, 'present') !== false || strpos($st, 'حاضر') !== false) {
+                if (!isset($att_status_map[$sid])) {
+                    $att_status_map[$sid] = 'حاضر';
+                }
+            }
+        }
+    } catch (Exception $eAtt) {}
 }
 ?>
 
 <style>
     .table-responsive { width: 100% !important; overflow-x: auto; -webkit-overflow-scrolling: touch; }
     .table th, .table td { word-break: break-word !important; white-space: normal !important; }
+    .grade-absent { color: #dc3545 !important; font-weight: bold; background-color: #fff5f5; border-color: #dc3545 !important; }
+    .grade-leave { color: #fd7e14 !important; font-weight: bold; background-color: #fff9f2; border-color: #fd7e14 !important; }
+    .grade-present { color: #198754 !important; font-weight: bold; }
 </style>
 
 <div class="container py-3 text-end" dir="rtl">
@@ -182,15 +275,33 @@ if ($selected_class && $selected_subject) {
                     </span>
                     <span class="badge bg-primary fs-6">کل طلباء: <?php echo count($students); ?></span>
                 </div>
+
+                <!-- فوری بیچ اندراج برائے اگلا سبق -->
+                <div class="card p-3 mb-3 bg-light border">
+                    <div class="row align-items-center g-2">
+                        <div class="col-md-8">
+                            <div class="input-group">
+                                <span class="input-group-text bg-white fw-bold"><i class="fas fa-bolt text-warning me-1"></i> تمام حاضر طلبہ کے لیے اگلا سبق:</span>
+                                <input type="text" id="batch_next_lesson" class="form-control" placeholder="مثلاً: صفحہ 10 تا 12 یا درس نمبر 3">
+                                <button type="button" class="btn btn-outline-success fw-bold" onclick="applyBatchLesson()">
+                                    <i class="fas fa-check me-1"></i> تمام حاضرین پر لاگو کریں
+                                </button>
+                            </div>
+                        </div>
+                        <div class="col-md-4 text-start text-muted small">
+                            <i class="fas fa-info-circle me-1"></i> غیر حاضر اور رخصت طلبہ کو خودکار استثناء دیا جائے گا۔
+                        </div>
+                    </div>
+                </div>
                 
                 <div class="table-responsive">
                     <table class="table table-bordered table-hover align-middle bg-white">
                         <thead class="table-light text-center">
                             <tr>
                                 <th style="width:5%;">#</th>
-                                <th style="width:25%;">نام طالب علم</th>
-                                <th style="width:45%;">سبق کی تفصیل (صفحہ / ٹاپک)</th>
-                                <th style="width:25%;">کیفیت / درجہ</th>
+                                <th style="width:25%;">نام طالب علم و حاضری</th>
+                                <th style="width:35%;">پچھلا سبق / کیفیت</th>
+                                <th style="width:35%;">اگلا سبق (مقدار / عنوان)</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -199,25 +310,52 @@ if ($selected_class && $selected_subject) {
                                 $rep = $existing_reports[$sid] ?? null;
                                 $lesson = $rep['lesson_details'] ?? '';
                                 $grade = $rep['grade'] ?? '';
+
+                                // اگر پہلے سے گریڈ موجود نہ ہو تو حاضری کی بنیاد پر خودکار ڈیفالٹ لاگو کریں
+                                $att_status = $att_status_map[$sid] ?? 'حاضر';
+                                if ($grade === '') {
+                                    if ($att_status === 'غیر حاضر') {
+                                        $grade = 'غیر حاضر';
+                                    } elseif ($att_status === 'رخصت') {
+                                        $grade = 'رخصت';
+                                    } else {
+                                        $grade = 'یاد ہے';
+                                    }
+                                }
+
+                                $grade_class = ($grade === 'غیر حاضر') ? 'grade-absent' : (($grade === 'رخصت') ? 'grade-leave' : 'grade-present');
                             ?>
-                            <tr>
+                            <tr id="row_<?php echo $sid; ?>">
                                 <td class="text-center fw-bold text-muted"><?php echo $sr++; ?></td>
                                 <td class="fw-bold text-primary">
-                                    <?php echo htmlspecialchars($s['name']); ?>
-                                    <div class="small text-muted fw-normal">ولد <?php echo htmlspecialchars($s['father_name']); ?></div>
+                                    <div class="d-flex align-items-center justify-content-between">
+                                        <span><?php echo htmlspecialchars($s['name']); ?></span>
+                                        <?php if ($att_status === 'غیر حاضر'): ?>
+                                            <span class="badge bg-danger ms-1">غیر حاضر</span>
+                                        <?php elseif ($att_status === 'رخصت'): ?>
+                                            <span class="badge bg-warning text-dark ms-1">رخصت</span>
+                                        <?php else: ?>
+                                            <span class="badge bg-success ms-1">حاضر</span>
+                                        <?php endif; ?>
+                                    </div>
+                                    <div class="small text-muted fw-normal">ولد <?php echo htmlspecialchars($s['father_name']); ?> | رول: <?php echo htmlspecialchars($s['admission_number'] ?? '-'); ?></div>
                                     <input type="hidden" name="std_ids[]" value="<?php echo $sid; ?>">
                                 </td>
                                 <td>
-                                    <textarea name="lessons[<?php echo $sid; ?>]" class="form-control" rows="1" placeholder="آج کا سبق..."><?php echo htmlspecialchars($lesson); ?></textarea>
-                                </td>
-                                <td>
-                                    <select name="grades[<?php echo $sid; ?>]" class="form-select fw-bold <?php echo ($grade == 'غیر حاضر') ? 'text-danger' : ''; ?>">
-                                        <option value="" class="text-dark">-- درجہ منتخب کریں --</option>
+                                    <select name="grades[<?php echo $sid; ?>]" class="form-select fw-bold grade-select <?php echo $grade_class; ?>" onchange="updateGradeStyle(this)">
+                                        <option value="یاد ہے" <?php echo $grade == 'یاد ہے' ? 'selected' : ''; ?>>یاد ہے</option>
+                                        <option value="یاد نہیں" <?php echo $grade == 'یاد نہیں' ? 'selected' : ''; ?>>یاد نہیں</option>
+                                        <option value="کچا پکا" <?php echo $grade == 'کچا پکا' ? 'selected' : ''; ?>>کچا پکا</option>
+                                        <option value="غیر حاضر" <?php echo $grade == 'غیر حاضر' ? 'selected' : ''; ?>>غیر حاضر</option>
+                                        <option value="رخصت" <?php echo $grade == 'رخصت' ? 'selected' : ''; ?>>رخصت</option>
                                         <option value="بہترین" <?php echo $grade == 'بہترین' ? 'selected' : ''; ?>>بہترین</option>
                                         <option value="بہتر" <?php echo $grade == 'بہتر' ? 'selected' : ''; ?>>بہتر</option>
                                         <option value="رعایتی پاس" <?php echo $grade == 'رعایتی پاس' ? 'selected' : ''; ?>>رعایتی پاس</option>
                                         <option value="کچا" <?php echo $grade == 'کچا' ? 'selected' : ''; ?>>کچا</option>
                                     </select>
+                                </td>
+                                <td>
+                                    <input type="text" name="lessons[<?php echo $sid; ?>]" class="form-control lesson-input" placeholder="اگلا سبق درج کریں..." value="<?php echo htmlspecialchars($lesson); ?>">
                                 </td>
                             </tr>
                             <?php endforeach; ?>
@@ -228,7 +366,7 @@ if ($selected_class && $selected_subject) {
                 <div class="row mt-3">
                     <div class="col-12">
                         <button type="submit" name="save_academic" class="btn btn-primary w-100 py-3 fw-bold shadow fs-5">
-                            <i class="fas fa-save me-2"></i> مکمل کلاس کا رزلٹ محفوظ کریں
+                            <i class="fas fa-save me-2"></i> مکمل کلاس کا تعلیمی ریکارڈ محفوظ کریں
                         </button>
                     </div>
                 </div>
@@ -245,16 +383,34 @@ if ($selected_class && $selected_subject) {
 </div>
 
 <script>
-    // To maintain dropdown colors dynamically if changed
-    document.querySelectorAll('select[name^="grades"]').forEach(function(select) {
-        select.addEventListener('change', function() {
-            if(this.value === 'غیر حاضر') {
-                this.classList.add('text-danger');
-            } else {
-                this.classList.remove('text-danger');
+    function updateGradeStyle(select) {
+        select.classList.remove('grade-absent', 'grade-leave', 'grade-present');
+        if (select.value === 'غیر حاضر') {
+            select.classList.add('grade-absent');
+        } else if (select.value === 'رخصت') {
+            select.classList.add('grade-leave');
+        } else {
+            select.classList.add('grade-present');
+        }
+    }
+
+    function applyBatchLesson() {
+        const val = document.getElementById('batch_next_lesson').value.trim();
+        if (!val) {
+            alert('براہِ کرم پہلے اگلا سبق درج کریں!');
+            return;
+        }
+        document.querySelectorAll('tbody tr').forEach(tr => {
+            const gradeSelect = tr.querySelector('.grade-select');
+            const lessonInput = tr.querySelector('.lesson-input');
+            if (gradeSelect && lessonInput) {
+                // غیر حاضر اور رخصت والوں کو چھوڑ کر باقی سب پر لاگو کریں
+                if (gradeSelect.value !== 'غیر حاضر' && gradeSelect.value !== 'رخصت') {
+                    lessonInput.value = val;
+                }
             }
         });
-    });
+    }
 </script>
 
 <?php include 'footer.php'; ?>

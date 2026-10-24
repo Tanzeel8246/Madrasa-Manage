@@ -4,11 +4,20 @@ require_once 'db.php';
 if (!isset($_GET['id'])) { die('Invalid Request'); }
 
 $id = (int)$_GET['id'];
-$row = $pdo->prepare("SELECT f.*, h.name AS head_name FROM finance f LEFT JOIN heads h ON h.id = f.head_id WHERE f.id = ? LIMIT 1");
+$row = $pdo->prepare("SELECT f.*, h.name AS head_name FROM finance f LEFT JOIN acc_chart_of_accounts h ON h.id = f.head_id WHERE f.id = ? LIMIT 1");
 $row->execute([$id]);
 $data = $row->fetch(PDO::FETCH_ASSOC);
 
 if (!$data || strtolower((string)$data['type']) !== 'income') { die('Receipt not found or not an income entry.'); }
+
+$inst_name = 'مدرسہ';
+try {
+    $cur_t = function_exists('get_current_tenant_id') ? get_current_tenant_id($pdo) : 1;
+    $sStmt = $pdo->prepare("SELECT setting_value FROM settings WHERE setting_key = 'madrasa_name' AND (tenant_id = ? OR tenant_id IS NULL OR tenant_id = 1) LIMIT 1");
+    $sStmt->execute([$cur_t]);
+    $dbName = $sStmt->fetchColumn();
+    if (!empty($dbName)) $inst_name = $dbName;
+} catch (Throwable $e) {}
 
 function numberToUrduWordsLess100($n) {
     $units = [
@@ -136,7 +145,7 @@ function numberToUrdu($num) {
         .receipt-container {
             width: 250mm; 
             height: 160mm; 
-            background-image: url('<?= (isset($data['system_type']) && $data['system_type'] == 'Masjid') ? 'uploads/MAMFSS.webp' : 'uploads/receipt_bg.webp' ?>');
+            background-image: url('uploads/receipt_bg.webp');
             background-size: 100% 100%;
             background-repeat: no-repeat;
             background-position: center;
@@ -172,14 +181,14 @@ function numberToUrdu($num) {
         }
 
         /* Positions and explicit !important sizes with line decoration */
-        .f-comp-no { top: 34%; left: 13%; font-size: 26px !important; color: #000; font-family: Arial, sans-serif !important; font-weight: 900 !important; }
+        .f-comp-no { top: 35%; left: 13%; font-size: 26px !important; color: #000; font-family: Arial, sans-serif !important; font-weight: 900 !important; }
         .f-date { top: 46.5%; left: 12.5%; font-family: Arial, sans-serif !important; font-size: 22px !important; font-weight: 900 !important; }
         
-        .f-name { top: 41.5%; right: 8%; font-size: 52px !important; font-weight: bold !important; width: 65%; text-align: right; border-bottom: 2px dotted #444; padding-bottom: 2px; }
-        .f-address { top: 54.5%; right: 8%; font-size: 38px !important; font-weight: bold !important; width: 78%; overflow: hidden; text-align: right; border-bottom: 2px dotted #444; padding-bottom: 2px; }
-        .f-head { top: 67.5%; right: 8%; font-size: 38px !important; font-weight: bold !important; width: 50%; text-align: right; border-bottom: 2px dotted #444; padding-bottom: 2px; }
+        .f-name { top: 46.5%; right: 8%; font-size: 52px !important; font-weight: bold !important; width: 65%; text-align: right; border-bottom: 2px dotted #444; padding-bottom: 2px; }
+        .f-address { top: 59.5%; right: 8%; font-size: 38px !important; font-weight: bold !important; width: 78%; overflow: hidden; text-align: right; border-bottom: 2px dotted #444; padding-bottom: 2px; }
+        .f-head { top: 72.5%; right: 8%; font-size: 38px !important; font-weight: bold !important; width: 50%; text-align: right; border-bottom: 2px dotted #444; padding-bottom: 2px; }
         
-        .f-amount-box { top: 68.5%; left: 24%; font-size: 26px !important; font-family: Arial, sans-serif !important; font-weight: 900 !important; }
+        .f-amount-box { top: 73.5%; left: 24%; font-size: 26px !important; font-family: Arial, sans-serif !important; font-weight: 900 !important; }
         
         .f-sig-img { 
             position: absolute;
@@ -376,11 +385,12 @@ function numberToUrdu($num) {
 
         function getShareText() {
             const donor = "<?php echo addslashes((string)$data['donor_name']); ?>";
+            const instName = "<?php echo addslashes((string)$inst_name); ?>";
             const amount = "<?php echo number_format((float)$data['amount']); ?>";
             const head = "<?php echo addslashes((string)($data['head_name'] ?: $data['description'])); ?>";
             const receiptNo = "<?php echo htmlspecialchars((string)$data['computer_receipt_no']); ?>";
             
-            return `*مدرسہ اشرف المدارس — رسید* \n` +
+            return `*${instName} — رسید* \n` +
                    `نام: ${donor}\n` +
                    `رقم: ${amount} روپے\n` +
                    `مد: ${head}\n` +
@@ -399,7 +409,7 @@ function numberToUrdu($num) {
                 if (navigator.canShare && navigator.canShare({ files: [file] })) {
                     navigator.share({
                         files: [file],
-                        title: 'مدرسہ اشرف المدارس - رسید',
+                        title: `${instName} - رسید`,
                         text: text
                     }).then(() => {
                         closeModal();

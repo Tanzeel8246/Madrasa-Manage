@@ -5,17 +5,34 @@ import 'sync_engine.dart';
 import 'sync_upload.dart';
 
 class SyncDownloader {
-  /// Download sync with optional delta timestamp
-  static Future<Map<String, int>> syncDown(DBHelper db) async {
+  /// Download sync with optional delta timestamp and forceFull support
+  static Future<Map<String, int>> syncDown(DBHelper db,
+      {bool forceFull = false}) async {
     final sys = SystemTypeGlobal.currentSystemType.value;
-    final lastSync = await SyncEngine.getLastSyncTime();
-    final since = lastSync
-            ?.subtract(const Duration(minutes: 5))
-            .toIso8601String() ??
-        '';
+    bool effectiveForce = forceFull;
+    if (!effectiveForce) {
+      try {
+        final localDb = await db.database;
+        final countRes = await localDb.rawQuery(
+            'SELECT COUNT(*) as cnt FROM students WHERE is_deleted = 0 OR is_deleted IS NULL');
+        final cnt =
+            countRes.isNotEmpty ? (countRes.first['cnt'] as int? ?? 0) : 0;
+        if (cnt == 0) {
+          effectiveForce = true;
+        }
+      } catch (_) {}
+    }
+
+    final lastSync =
+        effectiveForce ? null : await SyncEngine.getLastSyncTime();
+    final since = (lastSync != null && !effectiveForce)
+        ? lastSync.subtract(const Duration(minutes: 30)).toIso8601String()
+        : '';
 
     String action = 'sync_down&system_type=${Uri.encodeComponent(sys)}';
-    if (since.isNotEmpty) {
+    if (effectiveForce) {
+      action += '&full_sync=1';
+    } else if (since.isNotEmpty) {
       action += '&since=${Uri.encodeComponent(since)}';
     }
 

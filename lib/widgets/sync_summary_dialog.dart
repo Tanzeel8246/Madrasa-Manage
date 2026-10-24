@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../sync/sync_ui_helper.dart';
 import '../utils/globals.dart';
 import '../utils/sync_result.dart';
 
@@ -378,10 +379,41 @@ class SyncSummaryDialog extends StatelessWidget {
                   ),
                   border: Border(top: BorderSide(color: Colors.grey.shade200)),
                 ),
-                child: Row(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
+                    if (totalDown == 0) ...[
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFF284D3D),
+                            side: const BorderSide(color: Color(0xFF284D3D), width: 1.5),
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          icon: const Icon(Icons.cloud_download, size: 18),
+                          label: Text(
+                            isUrdu
+                                ? "سرور سے تمام ڈیٹا لوڈ کریں (مکمل سنک)"
+                                : "Download All From Server (Full Sync)",
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 13),
+                          ),
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                            SyncUIHelper.performManualSync(context, forceFull: true);
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 12),
                           side: BorderSide(color: Colors.grey.shade400),
@@ -427,6 +459,8 @@ class SyncSummaryDialog extends StatelessWidget {
                         ),
                       ),
                     ),
+                  ],
+                ),
                   ],
                 ),
               ),

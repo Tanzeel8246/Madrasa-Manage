@@ -1,36 +1,56 @@
 <?php
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
-require_once 'db.php';
+try {
+    require_once 'db.php';
+} catch (Throwable $e) {
+    die("<div style='font-family:sans-serif;padding:40px;text-align:center;direction:rtl;'><h2>ڈیٹابیس رابطہ کی خرابی</h2><p style='color:#c00;font-size:16px;'>" . htmlspecialchars($e->getMessage()) . " (" . basename($e->getFile()) . ":" . $e->getLine() . ")</p></div>");
+}
 
-$m_name = 'مدرسہ اشرف المدارس'; 
-$phone = '0301-2454595';
-$address = "321 Addheal Rossn, Sargodha";
+$cur_tenant_id = (int)get_current_tenant_id();
+$app_settings = get_tenant_settings($pdo, $cur_tenant_id);
+$m_name = !empty($app_settings['madrasa_name']) ? $app_settings['madrasa_name'] : 'مدرسہ اشرف المدارس'; 
+$phone = !empty($app_settings['phone']) ? $app_settings['phone'] : '0301-2454595';
+$address = !empty($app_settings['address']) ? $app_settings['address'] : "سرگودھا، پنجاب، پاکستان";
+$tagline = !empty($app_settings['tagline']) ? $app_settings['tagline'] : "العلم نور - تعلیم و تربیت کا گہوارہ";
+$logo_path = !empty($app_settings['logo_path']) ? $app_settings['logo_path'] : 'logo.png';
+$t_cond = ($cur_tenant_id == 1) ? "(tenant_id = 1 OR tenant_id IS NULL OR tenant_id = 0)" : "tenant_id = $cur_tenant_id";
 
-// Get live data - Updated: 2026-04-30 (v2)
+// Get live data - Scoped to tenant
 try {
     // 1. Total Active Students
-    $total_students = $pdo->query("SELECT COUNT(*) FROM students WHERE (status = 'Active' OR status = '' OR status IS NULL) AND is_deleted = 0")->fetchColumn() ?: 0;
+    $total_students = $pdo->query("SELECT COUNT(*) FROM students WHERE (status = 'Active' OR status = '' OR status IS NULL) AND is_deleted = 0 AND $t_cond")->fetchColumn() ?: 0;
     
     // 2. Total Active Teachers
-    $total_teachers = $pdo->query("SELECT COUNT(*) FROM teachers WHERE (status = 'Active' OR status = '' OR status IS NULL) AND is_deleted = 0")->fetchColumn() ?: 0;
+    $total_teachers = $pdo->query("SELECT COUNT(*) FROM teachers WHERE (status = 'Active' OR status = '' OR status IS NULL) AND is_deleted = 0 AND $t_cond")->fetchColumn() ?: 0;
     
     // 3. Huffaz (Alumni/Graduates)
-    $huffaz = $pdo->query("SELECT COUNT(*) FROM students WHERE status = 'Alumni' AND is_deleted = 0")->fetchColumn() ?: 0;
+    $huffaz = $pdo->query("SELECT COUNT(*) FROM students WHERE status = 'Alumni' AND is_deleted = 0 AND $t_cond")->fetchColumn() ?: 0;
     
     // 4. Active Classes
-    $active_classes = $pdo->query("SELECT COUNT(*) FROM classes WHERE status = 'Active' OR status = '' OR status IS NULL")->fetchColumn() ?: 0;
+    $active_classes = $pdo->query("SELECT COUNT(*) FROM classes WHERE (status = 'Active' OR status = '' OR status IS NULL) AND $t_cond")->fetchColumn() ?: 0;
 
     // 5. Current Month Expenses (Real Data)
     $current_month = date('m');
     $current_year = date('Y');
-    $monthly_expenses = $pdo->query("SELECT SUM(amount) FROM finance WHERE type = 'Expense' AND is_deleted = 0 AND MONTH(date) = '$current_month' AND YEAR(date) = '$current_year'")->fetchColumn() ?: 0;
+    $monthly_expenses = $pdo->query("SELECT SUM(amount) FROM finance WHERE type = 'Expense' AND is_deleted = 0 AND MONTH(date) = '$current_month' AND YEAR(date) = '$current_year' AND $t_cond")->fetchColumn() ?: 0;
 
 } catch (Exception $e) {
     $total_students = 0; $total_teachers = 0; $huffaz = 0; $active_classes = 0; $monthly_expenses = 0;
 }
 
-// Get notices for Marquee (latest 1) and Notice Board (latest 5)
-$notices = $pdo->query("SELECT * FROM notices ORDER BY date DESC LIMIT 5")->fetchAll();
+// Get notices & public announcements for Marquee and Notice Board
+$notices = [];
+try {
+    $annStmt = $pdo->query("SELECT title, body as description, publish_date as date, image_url, category FROM announcements WHERE is_public = 1 AND (is_deleted = 0 OR is_deleted IS NULL) AND $t_cond ORDER BY publish_date DESC LIMIT 5");
+    if ($annStmt) {
+        $notices = $annStmt->fetchAll();
+    }
+} catch (Exception $e) {}
+if (empty($notices)) {
+    try {
+        $notices = $pdo->query("SELECT * FROM notices WHERE (is_deleted = 0 OR is_deleted IS NULL) AND $t_cond ORDER BY date DESC LIMIT 5")->fetchAll();
+    } catch (Exception $e) { $notices = []; }
+}
 ?>
 <!DOCTYPE html>
 <html lang="ur" dir="rtl">
@@ -42,13 +62,73 @@ $notices = $pdo->query("SELECT * FROM notices ORDER BY date DESC LIMIT 5")->fetc
     <title><?php echo $m_name; ?> - <?php echo t('hero_subtitle'); ?> | Home</title>
     
     <script>
+        const validThemes = ['default', 'parchment-sage', 'pastel-sky', 'espresso-cream', 'classic-emerald', 'aurora-glass', 'soft-neumorphic', 'obsidian-glow', 'warm-sand'];
+        const themeInfoMap = {
+            'default': { name: 'عاجی زمرد و شاہی وقار (ڈیفالٹ)', short: 'عاجی زمرد' },
+            'parchment-sage': { name: 'عاجی زمرد و شاہی وقار (ڈیفالٹ)', short: 'عاجی زمرد' },
+            'pastel-sky': { name: 'نرم نیلم و فیروزی لطافت', short: 'پیسٹل اسکائی' },
+            'espresso-cream': { name: 'شاہی قہوہ و صندل', short: 'اسپریسو کریم' },
+            'classic-emerald': { name: 'کلاسک ادارہ جاتی زمرد', short: 'کلاسک زمرد' },
+            'aurora-glass': { name: 'اورورا فراسٹیڈ گلاس', short: 'اورورا گلاس' },
+            'soft-neumorphic': { name: 'سافٹ اسلیٹ نیومورفزم', short: 'سافٹ اسلیٹ' },
+            'obsidian-glow': { name: 'لگژری اوبسیڈین سائبر', short: 'اوبسیڈین گلو' },
+            'warm-sand': { name: 'شاہی صندل نیومورفزم', short: 'شاہی صندل' }
+        };
+
+        function updateThemeUI(themeName) {
+            const current = themeName || localStorage.getItem('theme') || 'default';
+            const info = themeInfoMap[current] || themeInfoMap['default'];
+            
+            document.querySelectorAll('.current-theme-name').forEach(function(el) {
+                el.textContent = info.name;
+            });
+            document.querySelectorAll('.current-theme-label').forEach(function(el) {
+                el.textContent = info.short;
+            });
+            
+            document.querySelectorAll('.theme-select-btn').forEach(function(btn) {
+                const bTheme = btn.getAttribute('data-theme');
+                const isMatch = (bTheme === current) || (bTheme === 'default' && (current === 'default' || current === 'parchment-sage'));
+                const check = btn.querySelector('.theme-check');
+                if (isMatch) {
+                    btn.classList.add('active-theme-ring');
+                    if (check) check.style.display = 'block';
+                } else {
+                    btn.classList.remove('active-theme-ring');
+                    if (check) check.style.display = 'none';
+                }
+            });
+        }
+
         // Immediate theme load logic to prevent FOUC
         (function() {
-            const savedTheme = localStorage.getItem('theme') || 'default';
+            let savedTheme = localStorage.getItem('theme') || 'default';
+            if (!validThemes.includes(savedTheme)) {
+                savedTheme = 'default';
+                localStorage.setItem('theme', 'default');
+            }
             if (savedTheme !== 'default') {
                 document.documentElement.className = 'theme-' + savedTheme;
             }
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', function() {
+                    updateThemeUI(savedTheme);
+                });
+            } else {
+                updateThemeUI(savedTheme);
+            }
         })();
+
+        function setTheme(themeName) {
+            document.documentElement.className = '';
+            if (themeName !== 'default') {
+                document.documentElement.classList.add('theme-' + themeName);
+                localStorage.setItem('theme', themeName);
+            } else {
+                localStorage.setItem('theme', 'default');
+            }
+            updateThemeUI(themeName);
+        }
     </script>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -63,70 +143,148 @@ $notices = $pdo->query("SELECT * FROM notices ORDER BY date DESC LIMIT 5")->fetc
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     
     <style>
-        :root {
-            --emerald-royal: var(--emerald-royal);
-            --emerald-mid: var(--emerald-mid);
-            --gold-burnished: var(--gold-burnished);
-            --gold-light: var(--gold-light);
-            --cream-bg: var(--cream-bg);
-            --text-dark: var(--text-dark);
-            --glass-white: rgba(255, 255, 255, 0.45);
-            --glass-border: rgba(255, 255, 255, 0.25);
+        /* 1. DEFAULT: عاجی زمرد و شاہی وقار (Image 3: Ivory Parchment & Sage Emerald - DEFAULT) */
+        :root, html.theme-parchment-sage {
+            --emerald-royal: #1B4332;
+            --emerald-mid: #2D6A4F;
+            --gold-burnished: #B89230;
+            --gold-light: #D4AF37;
+            --cream-bg: #F7F2EA;
+            --text-dark: #1F2937;
+            --glass-white: rgba(255, 255, 255, 0.88);
+            --glass-border: rgba(216, 226, 220, 0.7);
+            --navbar-bg: rgba(27, 67, 50, 0.92);
+            --navbar-scrolled: rgba(27, 67, 50, 0.98);
+            --hero-overlay-start: rgba(27, 67, 50, 0.75);
+            --hero-overlay-end: rgba(27, 67, 50, 0.92);
+            --footer-start: #1B4332;
+            --footer-end: #0B1C15;
         }
 
-        html.theme-dark-emerald {
-            --emerald-royal: #0c0f16;
-            --emerald-mid: #111622;
-            --gold-burnished: #00e676;
-            --gold-light: #ffd700;
-            --cream-bg: #0c0f16;
-            --text-dark: #f8fafc;
-            --glass-white: rgba(23, 29, 44, 0.75);
-            --glass-border: rgba(255, 255, 255, 0.05);
+        /* 2. نرم نیلم و فیروزی لطافت (Image 1: Pastel Sky Breeze) */
+        html.theme-pastel-sky {
+            --emerald-royal: #0284C7;
+            --emerald-mid: #0369A1;
+            --gold-burnished: #06B6D4;
+            --gold-light: #38BDF8;
+            --cream-bg: #EDF4F9;
+            --text-dark: #1E293B;
+            --glass-white: rgba(255, 255, 255, 0.92);
+            --glass-border: rgba(224, 235, 243, 0.85);
+            --navbar-bg: rgba(2, 132, 199, 0.92);
+            --navbar-scrolled: rgba(2, 132, 199, 0.98);
+            --hero-overlay-start: rgba(2, 132, 199, 0.75);
+            --hero-overlay-end: rgba(3, 105, 161, 0.92);
+            --footer-start: #0284C7;
+            --footer-end: #082F49;
         }
 
-        html.theme-classic-navy {
-            --emerald-royal: #0b2545;
-            --emerald-mid: #1e3a8a;
-            --gold-burnished: #3b82f6;
-            --gold-light: #93c5fd;
-            --cream-bg: #f4f6f9;
-            --text-dark: #1e293b;
-            --glass-white: rgba(255, 255, 255, 0.75);
-            --glass-border: rgba(11, 37, 69, 0.1);
+        /* 3. شاہی قہوہ و صندل (Image 2: Dark Espresso & Warm Cream) */
+        html.theme-espresso-cream {
+            --emerald-royal: #4A2C1D;
+            --emerald-mid: #361F14;
+            --gold-burnished: #C28E52;
+            --gold-light: #D4A373;
+            --cream-bg: #FDFBF7;
+            --text-dark: #2A1810;
+            --glass-white: rgba(255, 255, 255, 0.92);
+            --glass-border: rgba(230, 220, 210, 0.85);
+            --navbar-bg: rgba(74, 44, 29, 0.94);
+            --navbar-scrolled: rgba(54, 31, 20, 0.98);
+            --hero-overlay-start: rgba(74, 44, 29, 0.8);
+            --hero-overlay-end: rgba(54, 31, 20, 0.95);
+            --footer-start: #361F14;
+            --footer-end: #1A0D07;
         }
 
-        html.theme-warm-terracotta {
-            --emerald-royal: #2d3d41;
-            --emerald-mid: #34495e;
-            --gold-burnished: #c87a53;
-            --gold-light: #f5e9d9;
-            --cream-bg: #f5f4eb;
-            --text-dark: #2c3e50;
-            --glass-white: rgba(255, 255, 255, 0.75);
-            --glass-border: rgba(200, 122, 83, 0.15);
+        /* 4. کلاسک ادارہ جاتی زمرد (Classic Royal Emerald) */
+        html.theme-classic-emerald {
+            --emerald-royal: #133E2F;
+            --emerald-mid: #0E2C21;
+            --gold-burnished: #B89230;
+            --gold-light: #D4AF37;
+            --cream-bg: #F8F9FA;
+            --text-dark: #212529;
+            --glass-white: rgba(255, 255, 255, 0.85);
+            --glass-border: rgba(255, 255, 255, 0.4);
+            --navbar-bg: rgba(19, 62, 47, 0.92);
+            --navbar-scrolled: rgba(14, 44, 33, 0.98);
+            --hero-overlay-start: rgba(19, 62, 47, 0.75);
+            --hero-overlay-end: rgba(14, 44, 33, 0.92);
+            --footer-start: #133E2F;
+            --footer-end: #051612;
         }
 
-        html.theme-mint-glass {
-            --emerald-royal: #004d40;
-            --emerald-mid: #00796b;
-            --gold-burnished: #00bfa5;
-            --gold-light: #e0f2f1;
-            --cream-bg: #e0f2f1;
-            --text-dark: #004d40;
-            --glass-white: rgba(255, 255, 255, 0.75);
-            --glass-border: rgba(0, 191, 165, 0.2);
+        /* 5. اورورا فراسٹیڈ گلاس (Aurora Frosted Glass) */
+        html.theme-aurora-glass {
+            --emerald-royal: #047857;
+            --emerald-mid: #059669;
+            --gold-burnished: #10B981;
+            --gold-light: #06B6D4;
+            --cream-bg: #F2F6FA;
+            --text-dark: #1E293B;
+            --glass-white: rgba(255, 255, 255, 0.76);
+            --glass-border: rgba(255, 255, 255, 0.8);
+            --navbar-bg: rgba(4, 120, 87, 0.88);
+            --navbar-scrolled: rgba(4, 120, 87, 0.98);
+            --hero-overlay-start: rgba(4, 120, 87, 0.75);
+            --hero-overlay-end: rgba(6, 182, 212, 0.85);
+            --footer-start: #047857;
+            --footer-end: #064E3B;
         }
 
-        html.theme-sage-sand {
-            --emerald-royal: #3c4e4b;
-            --emerald-mid: #2f3a38;
-            --gold-burnished: #7b9e87;
-            --gold-light: #faf8f0;
-            --cream-bg: #faf8f0;
-            --text-dark: #2f3a38;
-            --glass-white: rgba(255, 255, 255, 0.75);
-            --glass-border: rgba(123, 158, 135, 0.2);
+        /* 6. سافٹ اسلیٹ نیومورفزم (Soft Slate Neumorphic) */
+        html.theme-soft-neumorphic {
+            --emerald-royal: #059669;
+            --emerald-mid: #10B981;
+            --gold-burnished: #10B981;
+            --gold-light: #D1FAE5;
+            --cream-bg: #E9EEF4;
+            --text-dark: #1E293B;
+            --glass-white: #E9EEF4;
+            --glass-border: rgba(166, 180, 200, 0.4);
+            --navbar-bg: rgba(5, 150, 105, 0.92);
+            --navbar-scrolled: rgba(5, 150, 105, 0.98);
+            --hero-overlay-start: rgba(5, 150, 105, 0.75);
+            --hero-overlay-end: rgba(30, 41, 59, 0.9);
+            --footer-start: #1E293B;
+            --footer-end: #0F172A;
+        }
+
+        /* 7. لگژری اوبسیڈین سائبر (Luxury Obsidian Cyber Glow) */
+        html.theme-obsidian-glow {
+            --emerald-royal: #00F2FE;
+            --emerald-mid: #38BDF8;
+            --gold-burnished: #00F2FE;
+            --gold-light: #38BDF8;
+            --cream-bg: #0D1117;
+            --text-dark: #F8FAFC;
+            --glass-white: rgba(22, 27, 38, 0.88);
+            --glass-border: rgba(0, 242, 254, 0.25);
+            --navbar-bg: rgba(13, 17, 23, 0.94);
+            --navbar-scrolled: rgba(13, 17, 23, 0.98);
+            --hero-overlay-start: rgba(13, 17, 23, 0.85);
+            --hero-overlay-end: rgba(22, 27, 38, 0.95);
+            --footer-start: #161B26;
+            --footer-end: #080B10;
+        }
+
+        /* 8. شاہی صندل نیومورفزم (Warm Sand Neumorphic) */
+        html.theme-warm-sand {
+            --emerald-royal: #2C2621;
+            --emerald-mid: #595147;
+            --gold-burnished: #0284C7;
+            --gold-light: #F97316;
+            --cream-bg: #F5F0E6;
+            --text-dark: #2C2621;
+            --glass-white: rgba(250, 247, 242, 0.85);
+            --glass-border: rgba(210, 198, 180, 0.5);
+            --navbar-bg: rgba(44, 38, 33, 0.94);
+            --navbar-scrolled: rgba(44, 38, 33, 0.98);
+            --hero-overlay-start: rgba(44, 38, 33, 0.8);
+            --hero-overlay-end: rgba(89, 81, 71, 0.92);
+            --footer-start: #2C2621;
+            --footer-end: #171411;
         }
         
         body { 
@@ -176,7 +334,7 @@ $notices = $pdo->query("SELECT * FROM notices ORDER BY date DESC LIMIT 5")->fetc
 
         /* Hero Full-Screen Overhaul */
         .hero-section {
-            background: linear-gradient(rgba(10, 46, 36, 0.7), rgba(10, 46, 36, 0.9)), url('uploads/hero_mosque.png');
+            background: linear-gradient(var(--hero-overlay-start, rgba(27, 67, 50, 0.75)), var(--hero-overlay-end, rgba(27, 67, 50, 0.92))), url('uploads/hero_mosque.png');
             background-size: cover;
             background-position: center;
             background-attachment: fixed;
@@ -188,6 +346,7 @@ $notices = $pdo->query("SELECT * FROM notices ORDER BY date DESC LIMIT 5")->fetc
             position: relative;
             margin: 0;
             border-radius: 0;
+            overflow: visible !important;
         }
         .hero-overlay-pattern {
             position: absolute;
@@ -234,7 +393,7 @@ $notices = $pdo->query("SELECT * FROM notices ORDER BY date DESC LIMIT 5")->fetc
         .dept-content {
             position: absolute;
             bottom: 0; left: 0; width: 100%; height: 100%;
-            background: linear-gradient(to top, rgba(10, 46, 36, 0.95) 10%, transparent 60%);
+            background: linear-gradient(to top, var(--emerald-royal, rgba(10, 46, 36, 0.95)) 10%, transparent 60%);
             display: flex;
             flex-direction: column;
             justify-content: flex-end;
@@ -244,13 +403,13 @@ $notices = $pdo->query("SELECT * FROM notices ORDER BY date DESC LIMIT 5")->fetc
 
         /* Navbar Sophistication */
         .navbar { 
-            background: rgba(10, 46, 36, 0.85) !important; 
+            background: var(--navbar-bg, rgba(27, 67, 50, 0.92)) !important; 
             backdrop-filter: blur(20px);
             padding: 20px 0; 
             border-bottom: 1px solid rgba(255,255,255,0.08);
             transition: all 0.3s ease;
         }
-        .navbar.scrolled { padding: 10px 0; background: rgba(10, 46, 36, 0.98) !important; }
+        .navbar.scrolled { padding: 10px 0; background: var(--navbar-scrolled, rgba(27, 67, 50, 0.98)) !important; }
         
         /* Interactive Animations */
         @keyframes ripple {
@@ -282,15 +441,70 @@ $notices = $pdo->query("SELECT * FROM notices ORDER BY date DESC LIMIT 5")->fetc
         .play-btn-royal:hover { transform: rotate(10deg); filter: brightness(1.2); }
 
         .footer-luxury {
-            background: linear-gradient(to bottom, var(--emerald-royal), #051612);
-            color: rgba(255,255,255,0.6);
+            background: linear-gradient(to bottom, var(--footer-start, var(--emerald-royal)), var(--footer-end, #051612));
+            color: rgba(255,255,255,0.65);
             padding: 120px 0 60px;
             position: relative;
             z-index: 1;
         }
         .footer-logo { font-size: 2rem; color: #fff; font-weight: 800; margin-bottom: 2rem; }
-        .footer-link { color: rgba(255,255,255,0.6); text-decoration: none; transition: 0.3s; }
+        .footer-link { color: rgba(255,255,255,0.65); text-decoration: none; transition: 0.3s; }
         .footer-link:hover { color: var(--gold-burnished); padding-right: 10px; }
+
+        .theme-dot {
+            display: inline-block;
+            transition: transform 0.2s ease;
+        }
+        .theme-dot:hover {
+            transform: scale(1.25);
+        }
+
+        /* Theme Switcher Bar (Right-to-Left / افقی دائیں سے بائیں) */
+        .theme-selection-bar {
+            scrollbar-width: thin;
+        }
+        .theme-select-btn {
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .theme-select-btn:hover {
+            transform: scale(1.15);
+        }
+        .theme-select-btn.active-theme-ring {
+            outline: 2px solid var(--emerald-royal, #1B4332);
+            outline-offset: 2px;
+            transform: scale(1.12);
+            box-shadow: 0 0 8px rgba(0, 0, 0, 0.25) !important;
+        }
+
+        /* Specific theme enhancements for dark & contrasting modes */
+        html.theme-obsidian-glow .audio-track {
+            background: rgba(22, 27, 38, 0.95) !important;
+            color: #F8FAFC !important;
+            border: 1px solid rgba(0, 242, 254, 0.2);
+        }
+        html.theme-obsidian-glow .audio-track h6 {
+            color: #00F2FE !important;
+        }
+        html.theme-obsidian-glow .timeline-royal .p-4 {
+            background: rgba(22, 27, 38, 0.95) !important;
+            color: #F8FAFC !important;
+            border-color: #00F2FE !important;
+        }
+        html.theme-obsidian-glow .timeline-royal .p-4 p {
+            color: #CBD5E1 !important;
+        }
+        html.theme-obsidian-glow .bg-white.bg-opacity-50 {
+            background: rgba(22, 27, 38, 0.6) !important;
+        }
+        html.theme-obsidian-glow .text-muted {
+            color: #94A3B8 !important;
+        }
+        html.theme-obsidian-glow .modal-content {
+            background: #161B26;
+            color: #F8FAFC;
+        }
         
         @media (max-width: 768px) {
             .hero-content h1 { font-size: 2.2rem; }
@@ -310,10 +524,41 @@ $notices = $pdo->query("SELECT * FROM notices ORDER BY date DESC LIMIT 5")->fetc
             .btn-royal { padding: 10px 24px; font-size: 0.9rem; }
             .hero-section { min-height: 80vh; }
         }
-        /* Fix overflow on all screen sizes */
+        /* Fix overflow on all screen sizes while keeping navbars and hero section clean and scroll-free */
         html, body { overflow-x: hidden; max-width: 100%; }
-        .container, .container-fluid { overflow-x: hidden; }
+        .hero-section, .hero-content, .container, .container-fluid { overflow: visible !important; }
+        .hero-section, .hero-content {
+            scrollbar-width: none !important;
+            -ms-overflow-style: none !important;
+        }
+        .hero-section::-webkit-scrollbar, .hero-content::-webkit-scrollbar {
+            display: none !important;
+            width: 0 !important;
+            height: 0 !important;
+        }
+        .navbar, .navbar .container, .navbar .container-fluid { overflow: visible !important; }
         .row { margin-left: 0; margin-right: 0; }
+        .theme-dropdown-menu {
+            border-radius: 20px !important;
+            min-width: 320px !important;
+            max-width: 95vw !important;
+            z-index: 1070 !important;
+            box-shadow: 0 12px 35px rgba(0,0,0,0.18) !important;
+        }
+        @media (max-width: 576px) {
+            .theme-dropdown-menu {
+                position: fixed !important;
+                top: 65px !important;
+                left: 10px !important;
+                right: 10px !important;
+                width: auto !important;
+                min-width: unset !important;
+                max-width: none !important;
+                transform: none !important;
+                margin: 0 !important;
+                z-index: 1095 !important;
+            }
+        }
     </style>
 </head>
 <body>
@@ -325,23 +570,94 @@ $notices = $pdo->query("SELECT * FROM notices ORDER BY date DESC LIMIT 5")->fetc
                 <img src="logo.png" alt="Logo" style="width: 40px; height: 40px; border-radius: 50%; margin-left: 10px; background: white; border: 2px solid var(--gold-burnished); object-fit: contain;">
                 <?php echo $m_name; ?>
             </a>
-            <button class="navbar-toggler border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navMenu">
-                <span class="navbar-toggler-icon"></span>
-            </button>
+            <!-- Right Controls: Theme Switcher, Dashboard Button & Mobile Toggler -->
+            <div class="d-flex align-items-center gap-2 order-lg-last ms-auto ms-lg-3">
+                <!-- Theme Switcher Dropdown (Right-to-Left Bar & Active Theme Mention) -->
+                <div class="dropdown">
+                    <button class="btn btn-outline-light btn-sm rounded-pill px-3 d-flex align-items-center gap-2 shadow-sm" type="button" id="themeDropdownWeb" data-bs-toggle="dropdown" aria-expanded="false" style="height: 38px;" title="تھیم تبدیل کریں">
+                        <i class="fas fa-palette"></i>
+                        <span class="current-theme-label fw-bold small d-none d-sm-inline" id="webThemeBadge">عاجی زمرد</span>
+                    </button>
+                    <div class="dropdown-menu dropdown-menu-end theme-dropdown-menu shadow-lg border-0 p-3" aria-labelledby="themeDropdownWeb" style="border-radius: 20px; min-width: 320px; background: rgba(255,255,255,0.97); backdrop-filter: blur(14px); z-index: 1070;">
+                        <!-- Header with selected theme mentioned -->
+                        <div class="d-flex align-items-center justify-content-between pb-2 mb-2 border-bottom" dir="rtl">
+                            <span class="small fw-bold text-muted"><i class="fas fa-palette me-1 text-primary"></i> منتخب تھیم:</span>
+                            <span class="badge rounded-pill px-3 py-1 fw-bold current-theme-name" id="webDropdownThemeTitle" style="background: var(--emerald-royal, #1B4332); color: #fff; font-size: 0.8rem;">عاجی زمرد و شاہی وقار (ڈیفالٹ)</span>
+                        </div>
+                        <div class="small text-muted text-end mb-2" dir="rtl" style="font-size: 0.75rem;">
+                            دائیں سے بائیں کسی بھی تھیم کا انتخاب کریں:
+                        </div>
+                        <!-- RTL Horizontal Selection Bar (Right-to-Left) -->
+                        <div class="d-flex align-items-center justify-content-between gap-1 gap-sm-2 py-1 theme-selection-bar" dir="rtl">
+                            <!-- 1. Default: Parchment Sage -->
+                            <a class="theme-select-btn p-1 d-flex align-items-center justify-content-center rounded-circle border shadow-sm position-relative" data-theme="default" style="width: 32px; height: 32px; background: #F7F2EA; border-color: #1B4332 !important; text-decoration: none;" href="javascript:void(0)" onclick="setTheme('default')" title="عاجی زمرد و شاہی وقار (ڈیفالٹ)">
+                                <span class="theme-dot" style="background:#1B4332; width: 13px; height: 13px; border-radius: 50%;"></span>
+                                <i class="fas fa-check theme-check position-absolute text-white" style="font-size: 9px; display: none;"></i>
+                            </a>
+                            <!-- 2. Pastel Sky -->
+                            <a class="theme-select-btn p-1 d-flex align-items-center justify-content-center rounded-circle border shadow-sm position-relative" data-theme="pastel-sky" style="width: 32px; height: 32px; background: #EDF4F9; border-color: #0284C7 !important; text-decoration: none;" href="javascript:void(0)" onclick="setTheme('pastel-sky')" title="نرم نیلم و فیروزی لطافت">
+                                <span class="theme-dot" style="background:#0284C7; width: 13px; height: 13px; border-radius: 50%;"></span>
+                                <i class="fas fa-check theme-check position-absolute text-white" style="font-size: 9px; display: none;"></i>
+                            </a>
+                            <!-- 3. Espresso Cream -->
+                            <a class="theme-select-btn p-1 d-flex align-items-center justify-content-center rounded-circle border shadow-sm position-relative" data-theme="espresso-cream" style="width: 32px; height: 32px; background: #181613; border-color: #C89D5C !important; text-decoration: none;" href="javascript:void(0)" onclick="setTheme('espresso-cream')" title="شاہی قہوہ و صندل">
+                                <span class="theme-dot" style="background:#EFE9DF; width: 13px; height: 13px; border-radius: 50%;"></span>
+                                <i class="fas fa-check theme-check position-absolute text-dark" style="font-size: 9px; display: none;"></i>
+                            </a>
+                            <!-- 4. Classic Emerald -->
+                            <a class="theme-select-btn p-1 d-flex align-items-center justify-content-center rounded-circle border shadow-sm position-relative" data-theme="classic-emerald" style="width: 32px; height: 32px; background: #133E2F; border-color: #B89230 !important; text-decoration: none;" href="javascript:void(0)" onclick="setTheme('classic-emerald')" title="کلاسک ادارہ جاتی زمرد">
+                                <span class="theme-dot" style="background:#B89230; width: 13px; height: 13px; border-radius: 50%;"></span>
+                                <i class="fas fa-check theme-check position-absolute text-white" style="font-size: 9px; display: none;"></i>
+                            </a>
+                            <!-- 5. Aurora Glass -->
+                            <a class="theme-select-btn p-1 d-flex align-items-center justify-content-center rounded-circle border shadow-sm position-relative" data-theme="aurora-glass" style="width: 32px; height: 32px; background: linear-gradient(135deg, #10B981, #06B6D4); border-color: #10B981 !important; text-decoration: none;" href="javascript:void(0)" onclick="setTheme('aurora-glass')" title="اورورا فراسٹیڈ گلاس">
+                                <span class="theme-dot" style="background:#ffffff; width: 13px; height: 13px; border-radius: 50%;"></span>
+                                <i class="fas fa-check theme-check position-absolute text-dark" style="font-size: 9px; display: none;"></i>
+                            </a>
+                            <!-- 6. Soft Neumorphic -->
+                            <a class="theme-select-btn p-1 d-flex align-items-center justify-content-center rounded-circle border shadow-sm position-relative" data-theme="soft-neumorphic" style="width: 32px; height: 32px; background: #E9EEF4; border-color: #CBD5E1 !important; text-decoration: none;" href="javascript:void(0)" onclick="setTheme('soft-neumorphic')" title="سافٹ اسلیٹ نیومورفزم">
+                                <span class="theme-dot" style="background:#10B981; width: 13px; height: 13px; border-radius: 50%;"></span>
+                                <i class="fas fa-check theme-check position-absolute text-white" style="font-size: 9px; display: none;"></i>
+                            </a>
+                            <!-- 7. Obsidian Glow -->
+                            <a class="theme-select-btn p-1 d-flex align-items-center justify-content-center rounded-circle border shadow-sm position-relative" data-theme="obsidian-glow" style="width: 32px; height: 32px; background: #0D1117; border-color: #00F2FE !important; text-decoration: none;" href="javascript:void(0)" onclick="setTheme('obsidian-glow')" title="لگژری اوبسیڈین سائبر">
+                                <span class="theme-dot" style="background:#00F2FE; width: 13px; height: 13px; border-radius: 50%; box-shadow: 0 0 6px #00F2FE;"></span>
+                                <i class="fas fa-check theme-check position-absolute text-dark" style="font-size: 9px; display: none;"></i>
+                            </a>
+                            <!-- 8. Warm Sand -->
+                            <a class="theme-select-btn p-1 d-flex align-items-center justify-content-center rounded-circle border shadow-sm position-relative" data-theme="warm-sand" style="width: 32px; height: 32px; background: #F5F0E6; border-color: #D2C6B4 !important; text-decoration: none;" href="javascript:void(0)" onclick="setTheme('warm-sand')" title="شاہی صندل نیومورفزم">
+                                <span class="theme-dot" style="background:#0284C7; width: 13px; height: 13px; border-radius: 50%;"></span>
+                                <i class="fas fa-check theme-check position-absolute text-white" style="font-size: 9px; display: none;"></i>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+                <?php if(isset($_SESSION['user_id'])): ?>
+                    <a href="dashboard.php" class="btn btn-warning rounded-pill px-3 px-md-4 fw-bold shadow-sm d-none d-md-inline-block"><?php echo t('nav_dashboard'); ?></a>
+                <?php else: ?>
+                    <a href="login.php" class="btn btn-outline-light rounded-pill px-3 px-md-4 fw-bold d-none d-md-inline-block"><?php echo t('nav_login'); ?></a>
+                <?php endif; ?>
+
+                <button class="navbar-toggler border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navMenu">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+            </div>
+
             <div class="collapse navbar-collapse" id="navMenu">
                 <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
                     <li class="nav-item"><a class="nav-link px-3" href="#"><?php echo t('nav_home'); ?></a></li>
                     <li class="nav-item"><a class="nav-link px-3" href="#about"><?php echo t('nav_about'); ?></a></li>
                     <li class="nav-item"><a class="nav-link px-3" href="#depts"><?php echo t('nav_depts'); ?></a></li>
                     <li class="nav-item"><a class="nav-link px-3" href="#contact"><?php echo t('nav_contact'); ?></a></li>
+                    <li class="nav-item d-md-none mt-2 pt-2 border-top">
+                        <?php if(isset($_SESSION['user_id'])): ?>
+                            <a href="dashboard.php" class="btn btn-warning w-100 rounded-pill fw-bold shadow-sm"><?php echo t('nav_dashboard'); ?></a>
+                        <?php else: ?>
+                            <a href="login.php" class="btn btn-outline-light w-100 rounded-pill fw-bold"><?php echo t('nav_login'); ?></a>
+                        <?php endif; ?>
+                    </li>
                 </ul>
-                <div class="ms-lg-4">
-                    <?php if(isset($_SESSION['user_id'])): ?>
-                        <a href="dashboard.php" class="btn btn-warning rounded-pill px-4 fw-bold shadow-sm"><?php echo t('nav_dashboard'); ?></a>
-                    <?php else: ?>
-                        <a href="login.php" class="btn btn-outline-light rounded-pill px-4 fw-bold"><?php echo t('nav_login'); ?></a>
-                    <?php endif; ?>
-                </div>
             </div>
         </div>
     </nav>

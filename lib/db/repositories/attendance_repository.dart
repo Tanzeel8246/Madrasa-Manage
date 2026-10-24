@@ -1,5 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 import '../../db_helper.dart';
+import '../../utils/data_refresh_bus.dart';
 
 class AttendanceRepository {
   final DBHelper _dbHelper;
@@ -64,11 +65,14 @@ class AttendanceRepository {
     final db = await _db;
     final values = Map<String, dynamic>.from(data);
     values['is_synced'] = 0;
-    return await db.insert(
+    final id = await db.insert(
       'attendance',
       values,
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+
+    DataRefreshBus.notify(DataDomain.attendance, action: 'mark_student', entityId: values['student_id']);
+    return id;
   }
 
   Future<List<Map<String, dynamic>>> getTeacherAttendance(
@@ -93,10 +97,13 @@ class AttendanceRepository {
     final db = await _db;
     final values = Map<String, dynamic>.from(data);
     values['is_synced'] = 0;
-    return await db.insert(
+    final id = await db.insert(
       'attendance_teachers',
       values,
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+
+    DataRefreshBus.notify(DataDomain.attendance, action: 'mark_teacher', entityId: values['teacher_id']);
+    return id;
   }
 }

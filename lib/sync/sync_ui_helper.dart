@@ -7,7 +7,7 @@ import 'sync_models.dart';
 
 class SyncUIHelper {
   static Future<SyncResult?> performManualSync(BuildContext context,
-      {bool background = false}) async {
+      {bool background = false, bool forceFull = false}) async {
     final isUrdu = isUrduGlobal.value;
 
     if (!background) {
@@ -25,7 +25,13 @@ class SyncUIHelper {
                 const Icon(Icons.sync, color: Color(0xFF284D3D)),
                 const SizedBox(width: 10),
                 Text(
-                  isUrdu ? "ڈیٹا سنکنگ جاری ہے..." : "Syncing in progress...",
+                  forceFull
+                      ? (isUrdu
+                          ? "مکمل ڈیٹا سنکنگ جاری ہے..."
+                          : "Full Sync in progress...")
+                      : (isUrdu
+                          ? "ڈیٹا سنکنگ جاری ہے..."
+                          : "Syncing in progress..."),
                   style: const TextStyle(
                       fontSize: 16, fontWeight: FontWeight.bold),
                 ),
@@ -91,7 +97,8 @@ class SyncUIHelper {
     }
 
     try {
-      final result = await SyncEngine.runTwoWaySyncWithResult();
+      final result =
+          await SyncEngine.runTwoWaySyncWithResult(forceFull: forceFull);
 
       if (!background && Navigator.canPop(context)) {
         Navigator.pop(context); // Close progress dialog
