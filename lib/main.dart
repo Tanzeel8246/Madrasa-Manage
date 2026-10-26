@@ -84,6 +84,15 @@ void main() async {
   } catch (_) {}
 
   // Auto-login logic
+  // Load Language Preference
+  try {
+    const storage = FlutterSecureStorage();
+    final savedLang = await storage.read(key: 'app_language');
+    if (savedLang != null) {
+      isUrduGlobal.value = (savedLang == 'ur' || savedLang == 'true');
+    }
+  } catch (_) {}
+
   Widget initialScreen = const HomePage();
   final session = await SessionManager.getSession();
   if (session != null &&

@@ -3150,12 +3150,43 @@ class DBHelper {
     );
   }
 
+  Future<void> _autoRemediateAuditVouchers(Database db) async {
+    try {
+      final voidVouchers = [
+        'SF-PV-002022',
+        'SF-RV-002023',
+        'SF-RV-002024',
+        'SF-RV-002025',
+        'JV-INV-000103',
+        'RV-261023-2041'
+      ];
+      final placeholders = List.filled(voidVouchers.length, '?').join(',');
+      await db.rawUpdate(
+        "UPDATE acc_vouchers SET status = 'Void', is_deleted = 1, is_synced = 0 WHERE voucher_no IN ($placeholders) OR reference IN ($placeholders)",
+        [...voidVouchers, ...voidVouchers],
+      );
+
+      await db.rawUpdate(
+        "UPDATE acc_invoices SET is_deleted = 1, is_synced = 0 WHERE id = 103 OR invoice_no = 'INV-2610-1691'",
+      );
+
+      final assetCodes = ['59442', '54902', '55392'];
+      final codePlaceholders = List.filled(assetCodes.length, '?').join(',');
+      await db.rawUpdate(
+        "UPDATE acc_chart_of_accounts SET type = 'Asset', is_synced = 0 WHERE code IN ($codePlaceholders) AND type != 'Asset'",
+        assetCodes,
+      );
+    } catch (_) {}
+  }
+
   Future<void> _backfillSimpleFinanceToAccounts(
     Database db, {
     String? fromDate,
     String? toDate,
   }) async {
     await _createAccountingTables(db);
+
+    await _autoRemediateAuditVouchers(db);
 
     // Sync deleted status of finance vouchers
     await db.rawUpdate('''

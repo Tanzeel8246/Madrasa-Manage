@@ -474,14 +474,18 @@ class _SettingsPageState extends State<SettingsPage> {
                                 const SizedBox(width: 10),
                                 ListTile(
                                   contentPadding: EdgeInsets.zero,
-                                  title: const Text("اردو",
-                                      style: TextStyle(
-                                          fontWeight: FontWeight.bold)),
+                                  title: Text(isUrdu ? "اردو زبان" : "Urdu Language",
+                                      style: const TextStyle(fontWeight: FontWeight.bold)),
+                                  subtitle: Text(isUrdu ? "ایپ کا انٹرفیس اردو میں دکھائیں" : "Show app interface in Urdu"),
                                   trailing: Switch(
                                     value: isUrdu,
                                     activeThumbColor: primaryGreen,
-                                    onChanged: (val) {
+                                    onChanged: (val) async {
                                       isUrduGlobal.value = val;
+                                      try {
+                                        const storage = FlutterSecureStorage();
+                                        await storage.write(key: 'app_language', value: val ? 'ur' : 'en');
+                                      } catch (_) {}
                                     },
                                   ),
                                 ),
