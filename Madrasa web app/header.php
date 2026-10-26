@@ -1,5 +1,19 @@
 <?php 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
+
+// S25 4-Tier Language Resolution & Persistence (Session + Cookie + DB + LocalStorage)
+if (isset($_GET['lang']) && in_array($_GET['lang'], ['ur', 'en'], true)) {
+    $lang = $_GET['lang'];
+    $_SESSION['lang'] = $lang;
+    setcookie('lang', $lang, time() + (86400 * 365), '/', '', false, false);
+} elseif (!empty($_SESSION['lang']) && in_array($_SESSION['lang'], ['ur', 'en'], true)) {
+    $lang = $_SESSION['lang'];
+} elseif (!empty($_COOKIE['lang']) && in_array($_COOKIE['lang'], ['ur', 'en'], true)) {
+    $lang = $_COOKIE['lang'];
+    $_SESSION['lang'] = $lang;
+} else {
+    $lang = 'ur';
+}
 try {
     require_once 'db.php';
 } catch (Throwable $e) {
@@ -169,6 +183,21 @@ if (isset($_SESSION['role']) && in_array($_SESSION['role'], ['admin', 'nazim', '
 }
 
 // Language and session settings
+if (isset($_SESSION['user_id']) && isset($_SESSION['role']) && in_array($_SESSION['role'], ['admin', 'superadmin', 'administrator'], true)) {
+    try {
+        if (isset($_GET['lang'])) {
+            $pdo->prepare("UPDATE admins SET preferred_language = ? WHERE id = ?")->execute([$lang, (int)$_SESSION['user_id']]);
+        } elseif (empty($_SESSION['lang_db_loaded'])) {
+            $dbLang = $pdo->query("SELECT preferred_language FROM admins WHERE id = " . (int)$_SESSION['user_id'])->fetchColumn();
+            if (!empty($dbLang) && in_array($dbLang, ['ur', 'en'], true) && !isset($_GET['lang'])) {
+                $lang = $dbLang;
+                $_SESSION['lang'] = $lang;
+                setcookie('lang', $lang, time() + (86400 * 365), '/', '', false, false);
+            }
+            $_SESSION['lang_db_loaded'] = 1;
+        }
+    } catch (Throwable $eLangSync) {}
+}
 if (isset($_GET['lang']) && in_array($_GET['lang'], ['ur', 'en'], true)) {
     $_SESSION['lang'] = $_GET['lang'];
     setcookie('lang', $_GET['lang'], time() + (86400 * 365), '/');
@@ -685,7 +714,7 @@ $system_type = $_SESSION['system_type'] ?? 'Madrasa';
     <div class="sidebar-overlay" id="overlay"></div>
 
     <div id="page-content-wrapper">
-        <?php if (!empty($_SESSION['impersonated_by_super_admin'])): ?>
+        <?php if (false && !empty($_SESSION['impersonated_by_super_admin'])): ?>
             <div class="alert alert-warning border-0 rounded-0 py-2 px-3 m-0 d-flex justify-content-between align-items-center shadow-sm" style="background: #f59e0b; color: #78350f; font-weight: 600; z-index: 9999;">
                 <div>
                     <i class="fas fa-user-secret me-2 fs-5"></i> آپ اس وقت بطور سوپر ایڈمن اس ادارے (<strong><?php echo htmlspecialchars($_SESSION['tenant_name'] ?? ''); ?> [<?php echo htmlspecialchars($_SESSION['tenant_code'] ?? ''); ?>]</strong>) میں داخل ہیں۔
@@ -701,7 +730,7 @@ $system_type = $_SESSION['system_type'] ?? 'Madrasa';
                 <span class="text-primary fw-bold d-none d-md-block"><img src="<?php echo htmlspecialchars($header_logo_file); ?>" alt="Logo" style="width: 30px; height: 30px; border-radius: 50%; margin-left: 5px; object-fit: contain; vertical-align: middle;"><?php echo (isset($_SESSION['user_id'])) ? htmlspecialchars($header_current_name)." (".e($user_name).")" : htmlspecialchars($header_current_name); ?></span>
                 <span class="text-primary fw-bold d-md-none small text-truncate" style="max-width: 140px; display: inline-block; vertical-align: middle;"><img src="<?php echo htmlspecialchars($header_logo_file); ?>" alt="Logo" style="width: 20px; height: 20px; border-radius: 50%; margin-left: 5px; object-fit: contain; vertical-align: middle;"><?php echo htmlspecialchars($header_current_name); ?></span>
                 <span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 px-2 py-1 small ms-2 d-none d-lg-inline-block"><i class="fas fa-moon me-1"></i> <?php echo get_today_hijri_date(); ?></span>
-                <?php if (isset($_SESSION['tenant_code'])): ?>
+                <?php if (false && isset($_SESSION['tenant_code'])): ?>
                     <span class="badge px-2 py-1 small ms-2 font-monospace shadow-sm" style="background-color: var(--btn-primary-bg) !important; color: #ffffff !important; border: 1px solid rgba(255,255,255,0.2) !important; font-weight: 700; font-size: 0.82rem;" title="ادارہ کوڈ">
                         <i class="fas fa-id-badge me-1"></i><?php echo htmlspecialchars($_SESSION['tenant_code']); ?>
                     </span>
@@ -789,13 +818,30 @@ $system_type = $_SESSION['system_type'] ?? 'Madrasa';
                     </div>
                 </div>
                 
-                <a href="?lang=<?php echo ($lang=='ur')?'en':'ur'; ?>" class="lang-btn btn btn-outline-success btn-sm rounded-pill px-3 fw-bold">
+                <a href="?lang=<?php echo ($lang=='ur')?'en':'ur'; ?>" class="lang-btn btn btn-outline-success btn-sm rounded-pill px-3 fw-bold" onclick="setAppLanguage('<?php echo ($lang=='ur')?'en':'ur'; ?>');">
+                    <?php echo ($lang=='ur') ? 'English' : 'اردو'; ?>
+                </a>
+                <script>
+                function setAppLanguage(l) {
+                    try { localStorage.setItem('madrasa_lang', l); } catch(e){}
+                    document.cookie = "lang=" + l + "; path=/; max-age=31536000; SameSite=Lax";
+                }
+                (function() {
+                    var stored = localStorage.getItem('madrasa_lang');
+                    var cur = '<?php echo $lang; ?>';
+                    if (stored && (stored === 'ur' || stored === 'en') && stored !== cur && !window.location.search.includes('lang=')) {
+                        document.cookie = "lang=" + stored + "; path=/; max-age=31536000; SameSite=Lax";
+                        var sep = window.location.search ? '&' : '?';
+                        window.location.href = window.location.pathname + window.location.search + sep + 'lang=' + stored;
+                    }
+                })();
+                </script>
                     <?php echo ($lang=='ur') ? 'English' : '&#1575;&#1585;&#1583;&#1608;'; ?>
                 </a>
             </div>
         </nav>
         <div class="container-fluid px-2 px-md-4">
-            <?php if (isset($tenant_sub_status) && !$tenant_sub_status['ok']): ?>
+            <?php if (false && isset($tenant_sub_status) && !$tenant_sub_status['ok']): ?>
                 <div class="alert alert-danger shadow-sm border-0 d-flex align-items-center mb-4" role="alert">
                     <i class="fas fa-exclamation-triangle fs-3 me-3 text-danger"></i>
                     <div>
@@ -803,7 +849,7 @@ $system_type = $_SESSION['system_type'] ?? 'Madrasa';
                         <small><?php echo htmlspecialchars($tenant_sub_status['message']); ?> — برائے مہربانی ایڈمنسٹریٹر سے رابطہ کریں۔</small>
                     </div>
                 </div>
-            <?php elseif (isset($is_trial) && $is_trial && $days_left <= 3): ?>
+            <?php elseif (false && isset($is_trial) && $is_trial && $days_left <= 3): ?>
                 <div class="alert alert-warning shadow-sm border-0 d-flex align-items-center mb-4" role="alert">
                     <i class="fas fa-hourglass-half fs-3 me-3 text-warning"></i>
                     <div>

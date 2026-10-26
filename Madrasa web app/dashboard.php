@@ -233,7 +233,7 @@ if (in_array($role, ['admin', 'nazim', 'teacher', 'mudarris', 'superadmin'], tru
                 <div class="stat-card bg-gradient-green h-100">
                     <div class="stat-icon"><i class="fas fa-school"></i></div>
                     <div class="stat-value"><?php echo $total_students; ?></div>
-                    <div class="stat-label">زیرِ تعلیم طلبہ</div>
+                    <div class="stat-label"><?php echo ($lang === 'ur') ? 'زیرِ تعلیم طلبہ' : 'Enrolled Students'; ?></div>
                 </div>
             </a>
         </div>

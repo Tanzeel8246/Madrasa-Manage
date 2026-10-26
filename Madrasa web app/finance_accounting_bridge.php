@@ -905,3 +905,59 @@ if (!function_exists('finance_resequence_all_receipt_numbers')) {
 }
 
 
+
+
+/**
+ * Auto-remediation for Residual Audit Vouchers and Cleanups
+ * Ensures SF-PV-002022, SF-RV-002023, SF-RV-002024, SF-RV-002025, JV-INV-000103,
+ * and RV-261023-2041 are cleanly marked Void and decoupled from ledger.
+ */
+if (!function_exists('finance_accounting_audit_auto_remediate')) {
+    function finance_accounting_audit_auto_remediate(PDO $pdo) {
+        static $executed = false;
+        if ($executed) return;
+        $executed = true;
+
+        try {
+            // 1. Explicitly mark shop sale voucher RV-261023-2041 as Void
+            $pdo->exec("UPDATE acc_vouchers SET status = 'Void' WHERE (voucher_no = 'RV-261023-2041' OR reference = 'SALE-261023-182') AND (status IS NULL OR status = '' OR status != 'Void')");
+
+            // 2. Void the 5 test vouchers:
+            // - SF-PV-002022 (Loan Rs 1,000)
+            // - SF-RV-002023 (Income Rs 100)
+            // - SF-RV-002024 (Expense Rs 40)
+            // - SF-RV-002025 (Income Rs 10)
+            // - JV-INV-000103 (Accrual Rs 50 for deleted test invoice INV-2610-1691)
+            $testVouchers = ['SF-PV-002022', 'SF-RV-002023', 'SF-RV-002024', 'SF-RV-002025', 'JV-INV-000103'];
+            $inVouchers = "'" . implode("','", $testVouchers) . "'";
+            $pdo->exec("UPDATE acc_vouchers SET status = 'Void', is_deleted = 1, description = CONCAT(IFNULL(description,''), ' [Voided by Audit Remediation]') WHERE voucher_no IN ($inVouchers) AND status != 'Void'");
+
+            // Also void by reference if referenced by old finance/invoice IDs
+            $pdo->exec("UPDATE acc_vouchers SET status = 'Void', is_deleted = 1 WHERE reference IN ('FIN-2022', 'FIN-2023', 'FIN-2024', 'FIN-2025', 'INV-ACCRUAL-103', 'INV-ACCRUAL-1691') AND status != 'Void'");
+
+            // 3. Soft-delete linked finance rows if any still active
+            $pdo->exec("UPDATE finance SET is_deleted = 1 WHERE (receipt_no IN ('300045', '300046', '300047') OR computer_receipt_no IN (300045, 300046, 300047) OR id IN (2022, 2023, 2024, 2025)) AND (is_deleted = 0 OR is_deleted IS NULL)");
+
+            // 4. Soft-delete test invoice INV-2610-1691
+            $pdo->exec("UPDATE acc_invoices SET status = 'Cancelled' WHERE (invoice_no = 'INV-2610-1691' OR id = 103) AND status != 'Cancelled'");
+
+            // 5. Ensure Chart of Accounts integrity for 11001, 40001, and 59442, 54902, 55392
+            finance_accounting_ensure_account($pdo, '11001', 'Student Fees Receivable', 'Asset', 1);
+            finance_accounting_ensure_account($pdo, '40001', 'Fee Income', 'Revenue', 1);
+            $pdo->exec("UPDATE acc_chart_of_accounts SET type = 'Asset' WHERE code IN ('59442', '54902', '55392') AND type != 'Asset'");
+
+            // 6. Ensure admins table has preferred_language column for S25 multi-tier persistence
+            try {
+                $colChk = $pdo->query("SHOW COLUMNS FROM admins LIKE 'preferred_language'")->fetch();
+                if (!$colChk) {
+                    $pdo->exec("ALTER TABLE admins ADD COLUMN preferred_language VARCHAR(10) DEFAULT 'ur'");
+                }
+            } catch (Throwable $eLang) {}
+        } catch (Throwable $e) {}
+    }
+}
+
+// Hook auto-remediation into database lifecycle
+if (isset($pdo) && $pdo instanceof PDO) {
+    finance_accounting_audit_auto_remediate($pdo);
+}

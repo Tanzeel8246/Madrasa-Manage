@@ -355,8 +355,8 @@ include 'header.php';
                             <td><small><?php echo e($v['description'] ?? '---'); ?></small></td>
                             <td class="text-end fw-bold">Rs. <?php echo number_format($v['total_amount'] ?? 0, 2); ?></td>
                             <td>
-                                <span class="badge bg-<?php echo $v['status']=='Approved'?'success':($v['status']=='Rejected'?'danger':($v['status']=='Reversed'?'dark':'warning')); ?>">
-                                    <?php echo e($v['status']); ?>
+                                <span class="badge bg-<?php echo $v['status']=='Approved'?'success':($v['status']=='Rejected'?'danger':($v['status']=='Reversed'?'dark':($v['status']=='Void'?'secondary':'warning'))); ?>">
+                                    <?php echo !empty($v['status']) ? e($v['status']) : 'Void'; ?>
                                 </span>
                             </td>
                             <td><small><?php echo e($v['creator_name'] ?? 'System'); ?></small></td>

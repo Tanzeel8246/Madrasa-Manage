@@ -147,12 +147,16 @@ if ((isset($_POST['action']) && $_POST['action'] === 'run') || (isset($_GET['aut
                 }
             }
 
-            // Void specific voucher SF-PV-002022 if exists
-            $vLoans = $pdo->query("SELECT id FROM acc_vouchers WHERE (voucher_no = 'SF-PV-002022' OR reference = 'FIN-2022' OR description LIKE '%SF-PV-002022%') AND status != 'Void'")->fetchAll(PDO::FETCH_ASSOC);
+            // Void specific residual test vouchers
+            $resVouchers = ['SF-PV-002022', 'SF-RV-002023', 'SF-RV-002024', 'SF-RV-002025', 'JV-INV-000103', 'RV-261023-2041'];
+            $inResV = "'" . implode("','", $resVouchers) . "'";
+            $vLoans = $pdo->query("SELECT id FROM acc_vouchers WHERE (voucher_no IN ($inResV) OR reference IN ('FIN-2022', 'FIN-2023', 'FIN-2024', 'FIN-2025', 'INV-ACCRUAL-103', 'INV-ACCRUAL-1691', 'SALE-261023-182') OR description LIKE '%SF-PV-002022%') AND status != 'Void'")->fetchAll(PDO::FETCH_ASSOC);
             foreach ($vLoans as $vl) {
                 $backupRecord('acc_vouchers', $vl['id']);
-                $pdo->prepare("UPDATE acc_vouchers SET status = 'Void' WHERE id = ?")->execute([$vl['id']]);
+                $pdo->prepare("UPDATE acc_vouchers SET status = 'Void', is_deleted = 1 WHERE id = ?")->execute([$vl['id']]);
             }
+            // Explicitly set RV-261023-2041 status to 'Void' if empty
+            $pdo->exec("UPDATE acc_vouchers SET status = 'Void' WHERE voucher_no = 'RV-261023-2041' OR reference = 'SALE-261023-182'");
         } catch (Throwable $e) {}
 
         try {
@@ -163,16 +167,17 @@ if ((isset($_POST['action']) && $_POST['action'] === 'run') || (isset($_GET['aut
             }
         } catch (Throwable $e) {}
 
-        // (ہ) سادہ فائنانس ٹیسٹ رسید #300045 (Rs 100) اور خرچ رسید #300046 (Rs 40)
+        // (ہ) سادہ فائنانس ٹیسٹ رسید #300045 (Rs 100)، رسید #300046 (Rs 40)، رسید #300047 (Rs 10)
         try {
             $testReceipts = $pdo->query("
                 SELECT id, voucher_id FROM finance 
                 WHERE (
-                    receipt_no IN ('300045', '300046') 
-                    OR computer_receipt_no IN (300045, 300046) 
-                    OR manual_receipt_no IN ('300045', '300046')
+                    receipt_no IN ('300045', '300046', '300047') 
+                    OR computer_receipt_no IN (300045, 300046, 300047) 
+                    OR manual_receipt_no IN ('300045', '300046', '300047')
                     OR (amount = 100 AND type = 'income' AND (description LIKE '%ٹیسٹ%' OR description LIKE '%TEST%'))
                     OR (amount = 40 AND type = 'expense' AND (description LIKE '%ٹیسٹ%' OR description LIKE '%TEST%'))
+                    OR (amount = 10 AND type = 'income' AND (description LIKE '%ٹیسٹ%' OR description LIKE '%TEST%'))
                 ) AND (is_deleted = 0 OR is_deleted IS NULL)
             ")->fetchAll(PDO::FETCH_ASSOC);
 
@@ -181,7 +186,7 @@ if ((isset($_POST['action']) && $_POST['action'] === 'run') || (isset($_GET['aut
                 $pdo->prepare("UPDATE finance SET is_deleted = 1, description = CONCAT(description, ' [Reversed S22 Cleanup]') WHERE id = ?")->execute([$tr['id']]);
                 if (!empty($tr['voucher_id'])) {
                     $backupRecord('acc_vouchers', $tr['voucher_id']);
-                    $pdo->prepare("UPDATE acc_vouchers SET status = 'Void' WHERE id = ?")->execute([$tr['voucher_id']]);
+                    $pdo->prepare("UPDATE acc_vouchers SET status = 'Void', is_deleted = 1 WHERE id = ?")->execute([$tr['voucher_id']]);
                 }
             }
         } catch (Throwable $e) {}

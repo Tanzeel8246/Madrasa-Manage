@@ -115,7 +115,7 @@ if (isset($_POST['update'])) {
         <h2 class="text-dark fw-bold m-0"><i class="fas fa-sliders-h me-2 text-primary"></i> <?php echo ($lang === 'ur') ? 'سافٹ ویئر سیٹنگز و ملٹی ٹیننٹ کسٹم برانڈنگ' : 'Software Settings & Custom Branding'; ?></h2>
         <div class="d-flex gap-2">
             <a href="setup_wizard.php" class="btn btn-success fw-bold shadow-sm"><i class="fas fa-magic me-1"></i> <?php echo ($lang === 'ur') ? 'نیا سیٹ اپ وزرڈ کھولیں' : 'Open Setup Wizard'; ?></a>
-            <span class="badge bg-primary px-3 py-2 fs-6 d-flex align-items-center"><i class="fas fa-building me-1"></i> <?php echo ($lang === 'ur') ? 'ٹیننٹ پروفائل مینجمنٹ' : 'Tenant Profile Management'; ?></span>
+            <span class="badge bg-primary px-3 py-2 fs-6 d-flex align-items-center"><i class="fas fa-building me-1"></i> <?php echo ($lang === 'ur') ? 'ادارہ جاتی پروفائل و برانڈنگ' : 'Institution Profile & Branding'; ?></span>
         </div>
     </div>
 
@@ -177,9 +177,9 @@ if (isset($_POST['update'])) {
                             <div class="d-flex align-items-center justify-content-between mb-2">
                                 <label class="fw-bold m-0"><i class="fas fa-image me-1 text-primary"></i> <?php echo ($lang === 'ur') ? 'مدرسہ کا آفیشل لوگو (Logo)' : 'Institution Official Logo'; ?></label>
                                 <?php if (!empty($set['logo_path']) && file_exists(__DIR__ . '/' . $set['logo_path'])): ?>
-                                    <span class="badge bg-success">فعال لوگو موجود ہے</span>
+                                    <span class="badge bg-success"><?php echo ($lang === 'ur') ? 'فعال لوگو موجود ہے' : 'Active Logo'; ?></span>
                                 <?php else: ?>
-                                    <span class="badge bg-secondary">ڈیفالٹ لوگو</span>
+                                    <span class="badge bg-secondary"><?php echo ($lang === 'ur') ? 'ڈیفالٹ لوگو' : 'Default Logo'; ?></span>
                                 <?php endif; ?>
                             </div>
                             <div class="d-flex gap-3 align-items-center">
@@ -188,7 +188,7 @@ if (isset($_POST['update'])) {
                                 </div>
                                 <div class="flex-grow-1">
                                     <input type="file" name="logo_file" class="form-control mb-2" accept="image/*">
-                                    <small class="text-muted d-block">سفارش کردہ فارمیٹ: شفاف PNG یا WebP (سائز 500x500 پکسل)</small>
+                                    <small class="text-muted d-block"><?php echo ($lang === 'ur') ? 'سفارش کردہ فارمیٹ: شفاف PNG یا WebP (سائز 500x500 پکسل)' : 'Recommended format: Transparent PNG or WebP (500x500 px)'; ?></small>
                                 </div>
                             </div>
                         </div>
@@ -198,9 +198,9 @@ if (isset($_POST['update'])) {
                             <div class="d-flex align-items-center justify-content-between mb-2">
                                 <label class="fw-bold m-0 text-success"><i class="fas fa-mosque me-1"></i> <?php echo ($lang === 'ur') ? 'مسجد کا آفیشل لوگو (Masjid Logo)' : 'Masjid Official Logo'; ?></label>
                                 <?php if (!empty($set['masjid_logo_path']) && file_exists(__DIR__ . '/' . $set['masjid_logo_path'])): ?>
-                                    <span class="badge bg-success">لوگو موجود ہے</span>
+                                    <span class="badge bg-success"><?php echo ($lang === 'ur') ? 'لوگو موجود ہے' : 'Logo Present'; ?></span>
                                 <?php else: ?>
-                                    <span class="badge bg-secondary">ڈیفالٹ لوگو</span>
+                                    <span class="badge bg-secondary"><?php echo ($lang === 'ur') ? 'ڈیفالٹ لوگو' : 'Default Logo'; ?></span>
                                 <?php endif; ?>
                             </div>
                             <div class="d-flex gap-3 align-items-center">
@@ -213,7 +213,7 @@ if (isset($_POST['update'])) {
                                 </div>
                                 <div class="flex-grow-1">
                                     <input type="file" name="masjid_logo_file" class="form-control mb-2" accept="image/*">
-                                    <small class="text-muted d-block">مسجد کا مخصوص لوگو (شفاف PNG یا WebP)</small>
+                                    <small class="text-muted d-block"><?php echo ($lang === 'ur') ? 'مسجد کا مخصوص لوگو (شفاف PNG یا WebP)' : 'Dedicated Masjid Logo (Transparent PNG or WebP)'; ?></small>
                                 </div>
                             </div>
                         </div>
@@ -223,9 +223,9 @@ if (isset($_POST['update'])) {
                             <div class="d-flex align-items-center justify-content-between mb-2">
                                 <label class="fw-bold m-0"><i class="fas fa-stamp me-1 text-warning"></i> <?php echo ($lang === 'ur') ? 'پرنسپل / مہتمم کے ڈیجیٹل دستخط و مہر' : 'Digital Signature / Stamp of Principal'; ?></label>
                                 <?php if (!empty($set['signature_stamp_path']) && file_exists(__DIR__ . '/' . $set['signature_stamp_path'])): ?>
-                                    <span class="badge bg-success">مہر موجود ہے</span>
+                                    <span class="badge bg-success"><?php echo ($lang === 'ur') ? 'مہر موجود ہے' : 'Stamp Configured'; ?></span>
                                 <?php else: ?>
-                                    <span class="badge bg-secondary">سیٹ نہیں ہے</span>
+                                    <span class="badge bg-secondary"><?php echo ($lang === 'ur') ? 'سیٹ نہیں ہے' : 'Not Set'; ?></span>
                                 <?php endif; ?>
                             </div>
                             <div class="d-flex gap-3 align-items-center">
@@ -238,7 +238,7 @@ if (isset($_POST['update'])) {
                                 </div>
                                 <div class="flex-grow-1">
                                     <input type="file" name="signature_stamp_file" class="form-control mb-2" accept="image/*">
-                                    <small class="text-muted d-block">شفاف پس منظر (Transparent PNG) دستخط یا مہر کی تصویر، جو رسید اور سند پر پرنٹ ہوگی۔</small>
+                                    <small class="text-muted d-block"><?php echo ($lang === 'ur') ? 'شفاف پس منظر (Transparent PNG) دستخط یا مہر کی تصویر، جو رسید اور سند پر پرنٹ ہوگی۔' : 'Transparent PNG image of signature or stamp, printed on receipts & certificates.'; ?></small>
                                 </div>
                             </div>
                         </div>
@@ -260,7 +260,7 @@ if (isset($_POST['update'])) {
                         <div class="p-3 mb-3 bg-light rounded border">
                             <div class="d-flex justify-content-between align-items-center mb-2">
                                 <label class="fw-bold m-0"><i class="fas fa-receipt me-1 text-success"></i> <?php echo ($lang === 'ur') ? 'مدرسہ رسید کا کسٹم بیک گراؤنڈ' : 'Madrasa Receipt Custom Background'; ?></label>
-                                <a href="print_receipt.php?id=1" target="_blank" class="btn btn-sm btn-outline-primary py-0 px-2" style="font-size: 11px;">پریویو دیکھیں</a>
+                                <a href="print_receipt.php?id=1" target="_blank" class="btn btn-sm btn-outline-primary py-0 px-2" style="font-size: 11px;"><?php echo ($lang === 'ur') ? 'پریویو دیکھیں' : 'View Preview'; ?></a>
                             </div>
                             <div class="d-flex gap-3 align-items-center">
                                 <div class="border rounded bg-white p-1 text-center" style="width: 100px; height: 65px;">
@@ -268,7 +268,7 @@ if (isset($_POST['update'])) {
                                 </div>
                                 <div class="flex-grow-1">
                                     <input type="file" name="receipt_bg_file" class="form-control mb-1" accept="image/*">
-                                    <small class="text-muted">مدرسہ کی آفیشل خالی رسید کا اسکین شدہ پس منظر (Landscape)</small>
+                                    <small class="text-muted"><?php echo ($lang === 'ur') ? 'مدرسہ کی آفیشل خالی رسید کا اسکین شدہ پس منظر (Landscape)' : 'Scanned blank official receipt template (Landscape)'; ?></small>
                                 </div>
                             </div>
                         </div>
@@ -277,7 +277,7 @@ if (isset($_POST['update'])) {
                         <div class="p-3 mb-3 bg-light rounded border">
                             <div class="d-flex justify-content-between align-items-center mb-2">
                                 <label class="fw-bold m-0"><i class="fas fa-mosque me-1 text-info"></i> <?php echo ($lang === 'ur') ? 'مسجد رسید کا کسٹم بیک گراؤنڈ' : 'Masjid Receipt Custom Background'; ?></label>
-                                <span class="badge bg-secondary">مسجد موڈ رسید</span>
+                                <span class="badge bg-secondary"><?php echo ($lang === 'ur') ? 'مسجد موڈ رسید' : 'Masjid Mode Receipt'; ?></span>
                             </div>
                             <div class="d-flex gap-3 align-items-center">
                                 <div class="border rounded bg-white p-1 text-center" style="width: 100px; height: 65px;">
@@ -285,7 +285,7 @@ if (isset($_POST['update'])) {
                                 </div>
                                 <div class="flex-grow-1">
                                     <input type="file" name="masjid_receipt_bg_file" class="form-control mb-1" accept="image/*">
-                                    <small class="text-muted">مسجد فنڈز کے لیے مخصوص رسید کا پس منظر</small>
+                                    <small class="text-muted"><?php echo ($lang === 'ur') ? 'مسجد فنڈز کے لیے مخصوص رسید کا پس منظر' : 'Custom receipt background for Masjid funds'; ?></small>
                                 </div>
                             </div>
                         </div>
@@ -295,9 +295,9 @@ if (isset($_POST['update'])) {
                             <div class="d-flex justify-content-between align-items-center mb-2">
                                 <label class="fw-bold m-0"><i class="fas fa-id-card me-1 text-primary"></i> <?php echo ($lang === 'ur') ? 'سٹوڈنٹ آئی ڈی کارڈ کسٹم بیک گراؤنڈ' : 'Student ID Card Custom Background'; ?></label>
                                 <?php if (!empty($set['id_card_bg']) && file_exists(__DIR__ . '/' . $set['id_card_bg'])): ?>
-                                    <span class="badge bg-success">کسٹم کارڈ سیٹ ہے</span>
+                                    <span class="badge bg-success"><?php echo ($lang === 'ur') ? 'کسٹم کارڈ سیٹ ہے' : 'Custom Card Set'; ?></span>
                                 <?php else: ?>
-                                    <span class="badge bg-secondary">سسٹم ڈیفالٹ کارڈ</span>
+                                    <span class="badge bg-secondary"><?php echo ($lang === 'ur') ? 'سسٹم ڈیفالٹ کارڈ' : 'Default Card'; ?></span>
                                 <?php endif; ?>
                             </div>
                             <div class="d-flex gap-3 align-items-center">
@@ -310,7 +310,7 @@ if (isset($_POST['update'])) {
                                 </div>
                                 <div class="flex-grow-1">
                                     <input type="file" name="id_card_bg_file" class="form-control mb-1" accept="image/*">
-                                    <small class="text-muted">سٹینڈرڈ کارڈ سائز (CR80 یا 3.375 x 2.125 انچ)</small>
+                                    <small class="text-muted"><?php echo ($lang === 'ur') ? 'سٹینڈرڈ کارڈ سائز (CR80 یا 3.375 x 2.125 انچ)' : 'Standard card size (CR80 or 3.375 x 2.125 in)'; ?></small>
                                 </div>
                             </div>
                         </div>
@@ -320,9 +320,9 @@ if (isset($_POST['update'])) {
                             <div class="d-flex justify-content-between align-items-center mb-2">
                                 <label class="fw-bold m-0 text-dark"><i class="fas fa-award me-1 text-warning"></i> <?php echo ($lang === 'ur') ? 'فارغ التحصیل طلبہ کی سند (Sanad Background Template)' : 'Graduation Certificate Template (Sanad)'; ?></label>
                                 <?php if (!empty($set['sanad_bg']) && file_exists(__DIR__ . '/' . $set['sanad_bg'])): ?>
-                                    <span class="badge bg-success">آفیشل سند سیٹ ہے</span>
+                                    <span class="badge bg-success"><?php echo ($lang === 'ur') ? 'آفیشل سند سیٹ ہے' : 'Official Sanad Set'; ?></span>
                                 <?php else: ?>
-                                    <span class="badge bg-info text-dark">شاہکار اسلامی بارڈر موڈ</span>
+                                    <span class="badge bg-info text-dark"><?php echo ($lang === 'ur') ? 'شاہکار اسلامی بارڈر موڈ' : 'Islamic Border Mode'; ?></span>
                                 <?php endif; ?>
                             </div>
                             <div class="d-flex gap-3 align-items-center">
@@ -335,7 +335,7 @@ if (isset($_POST['update'])) {
                                 </div>
                                 <div class="flex-grow-1">
                                     <input type="file" name="sanad_bg_file" class="form-control mb-1" accept="image/*">
-                                    <small class="text-muted">مدرسہ کی آفیشل سند کا خالی فریم (A4 Landscape - 297x210mm)۔ اگر اپلوڈ نہ ہو تو سسٹم کا شاہکار اسلامی بارڈر استعمال ہوگا۔</small>
+                                    <small class="text-muted"><?php echo ($lang === 'ur') ? 'مدرسہ کی آفیشل سند کا خالی فریم (A4 Landscape - 297x210mm)۔ اگر اپلوڈ نہ ہو تو سسٹم کا شاہکار اسلامی بارڈر استعمال ہوگا۔' : 'Blank certificate frame (A4 Landscape - 297x210mm). Default Islamic border used if not uploaded.'; ?></small>
                                 </div>
                             </div>
                         </div>
@@ -391,15 +391,15 @@ if (isset($_POST['update'])) {
 
 
                         <div class="mb-3">
-                            <label class="fw-bold mb-1">Gemini API Key <?php if(!empty($set['gemini_api_key'])): ?><span class="badge bg-success ms-1"><i class="fas fa-lock me-1"></i>محفوظ / ماسک شدہ</span><?php endif; ?></label>
+                            <label class="fw-bold mb-1">Gemini API Key <?php if(!empty($set['gemini_api_key'])): ?><span class="badge bg-success ms-1"><i class="fas fa-lock me-1"></i><?php echo ($lang === 'ur') ? 'محفوظ / ماسک شدہ' : 'Secured / Masked'; ?></span><?php endif; ?></label>
                             <input type="password" name="g_key" class="form-control" placeholder="<?php echo !empty($set['gemini_api_key']) ? '••••••••••••••••' : 'AIzaSy... نئی API کی درج کریں'; ?>" autocomplete="new-password">
-                            <small class="text-muted">اگر پہلے سے موجود کلید برقرار رکھنی ہو تو اسے خالی چھوڑ دیں۔</small>
+                            <small class="text-muted"><?php echo ($lang === 'ur') ? 'اگر پہلے سے موجود کلید برقرار رکھنی ہو تو اسے خالی چھوڑ دیں۔' : 'Leave blank to preserve existing key.'; ?></small>
                         </div>
 
                         <div class="mb-3">
-                            <label class="fw-bold mb-1">Groq API Key <?php if(!empty($set['groq_api_key'])): ?><span class="badge bg-success ms-1"><i class="fas fa-lock me-1"></i>محفوظ / ماسک شدہ</span><?php endif; ?></label>
+                            <label class="fw-bold mb-1">Groq API Key <?php if(!empty($set['groq_api_key'])): ?><span class="badge bg-success ms-1"><i class="fas fa-lock me-1"></i><?php echo ($lang === 'ur') ? 'محفوظ / ماسک شدہ' : 'Secured / Masked'; ?></span><?php endif; ?></label>
                             <input type="password" name="groq_key" class="form-control" placeholder="<?php echo !empty($set['groq_api_key']) ? '••••••••••••••••' : 'gsk_... نئی API کی درج کریں'; ?>" autocomplete="new-password">
-                            <small class="text-muted">اگر پہلے سے موجود کلید برقرار رکھنی ہو تو اسے خالی چھوڑ دیں۔</small>
+                            <small class="text-muted"><?php echo ($lang === 'ur') ? 'اگر پہلے سے موجود کلید برقرار رکھنی ہو تو اسے خالی چھوڑ دیں۔' : 'Leave blank to preserve existing key.'; ?></small>
                         </div>
 
                         <div class="row g-2">

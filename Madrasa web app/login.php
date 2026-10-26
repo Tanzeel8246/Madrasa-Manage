@@ -38,9 +38,12 @@ if (isset($_POST['login'])) {
             $_SESSION['role'] = !empty($admin['role']) ? $admin['role'] : 'admin';
             $_SESSION['name'] = $admin['name'];
             $_SESSION['permissions'] = json_decode($admin['permissions'] ?? '[]', true) ?: [];
+            if (!empty($admin['preferred_language']) && in_array($admin['preferred_language'], ['ur', 'en'], true)) {
+                $lang = $admin['preferred_language'];
+            }
             $_SESSION['lang'] = $lang;
-            setcookie('lang', $lang, time() + (86400 * 365), '/');
-            echo "<script>window.location.href='dashboard.php';</script>";
+            setcookie('lang', $lang, time() + (86400 * 365), '/', '', false, false);
+            echo "<script>try{localStorage.setItem('madrasa_lang', '$lang');}catch(e){} window.location.href='dashboard.php';</script>";
             exit;
         } 
         
@@ -125,10 +128,25 @@ if (isset($_POST['login'])) {
         <!-- Language Switcher Pill -->
         <div class="d-flex justify-content-end mb-2">
             <div class="btn-group btn-group-sm rounded-pill border p-1 bg-light">
-                <a href="login.php?lang=ur" class="btn btn-sm rounded-pill px-2 py-0 <?php echo ($lang==='ur') ? 'btn-success text-white fw-bold' : 'text-dark'; ?>" style="font-size: 11px;">اردو</a>
-                <a href="login.php?lang=en" class="btn btn-sm rounded-pill px-2 py-0 <?php echo ($lang==='en') ? 'btn-success text-white fw-bold' : 'text-dark'; ?>" style="font-size: 11px;">English</a>
+                <a href="login.php?lang=ur" onclick="setLoginLanguage('ur');" class="btn btn-sm rounded-pill px-2 py-0 <?php echo ($lang==='ur') ? 'btn-success text-white fw-bold' : 'text-dark'; ?>" style="font-size: 11px;">اردو</a>
+                <a href="login.php?lang=en" onclick="setLoginLanguage('en');" class="btn btn-sm rounded-pill px-2 py-0 <?php echo ($lang==='en') ? 'btn-success text-white fw-bold' : 'text-dark'; ?>" style="font-size: 11px;">English</a>
             </div>
         </div>
+        <script>
+        function setLoginLanguage(l) {
+            try { localStorage.setItem('madrasa_lang', l); } catch(e){}
+            document.cookie = "lang=" + l + "; path=/; max-age=31536000; SameSite=Lax";
+        }
+        (function() {
+            var stored = localStorage.getItem('madrasa_lang');
+            var cur = '<?php echo $lang; ?>';
+            if (stored && (stored === 'ur' || stored === 'en') && stored !== cur && !window.location.search.includes('lang=')) {
+                document.cookie = "lang=" + stored + "; path=/; max-age=31536000; SameSite=Lax";
+                var sep = window.location.search ? '&' : '?';
+                window.location.href = window.location.pathname + window.location.search + sep + 'lang=' + stored;
+            }
+        })();
+        </script>
 
         <img src="logo.png" alt="Logo" style="width: 80px; height: 80px; border-radius: 50%; border: 2px solid var(--primary); margin-bottom: 15px; background: white; object-fit: contain;">
         <h3 class="mb-2 text-success fw-bold"><?php echo e(t('app_name')); ?></h3>
