@@ -1,6 +1,7 @@
 name: madrasa_app
 description: "Madrasa Ashraf-ul-Madaris Management System"
-version: 5.7.118+337
+# Changelog: v5.7.144+363 - MC-MMS 100/100 Final Round: Footer version dynamic reflection (Item 1), standardized staff/teacher counts (Item 2), admin backup navigation link (Item 3)
+version: 5.7.144+363
 
 
 environment:

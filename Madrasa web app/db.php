@@ -6,11 +6,30 @@
  * Maintains 100% backwards compatibility for all 200+ dependent web pages.
  */
 
+// 0. Version Definition
+require_once __DIR__ . '/version.php';
+
 // 1. Database Configuration & Connection
 require_once __DIR__ . '/config/database.php';
 
 // 2. Multi-Tenant SaaS Middleware & Core Helpers
 require_once __DIR__ . '/middleware/tenant.php';
+// migration 007 auto-load removed
+if (isset($pdo) && $pdo instanceof PDO && function_exists('run_migration_007')) {
+    static $m007_executed = false;
+    if (!$m007_executed) {
+        $m007_executed = true;
+        try { /* migration 007 auto-run removed */ } catch (Throwable $e007) {}
+    }
+}
+// migration 008 auto-load removed
+if (isset($pdo) && $pdo instanceof PDO && function_exists('run_migration_008')) {
+    static $m008_executed = false;
+    if (!$m008_executed) {
+        $m008_executed = true;
+        try { /* migration 008 auto-run removed */ } catch (Throwable $e008) {}
+    }
+}
 
 // Schema self-healing available via function or on explicit request
 if (isset($_GET['migrate_tenant_schema']) && $_GET['migrate_tenant_schema'] === '1') {
@@ -153,6 +172,169 @@ if (!function_exists('get_period_date_range')) {
     }
 }
 
+/**
+ * Phase 4 Canonical Attendance Calculator (H-5 & A6 As-Of Unified)
+ * Single Source of Truth across annual_report.php, dashboard.php, and attendance_report.php
+ */
+if (!function_exists('get_canonical_attendance_stats')) {
+    function get_canonical_attendance_stats(PDO $pdo, string $start_date, string $end_date, int $tenant_id = 1, string $sys = 'Madrasa'): array {
+        $total_slots = 0;
+        $present_slots = 0;
+        $absent_slots = 0;
+        $leave_slots = 0;
+        $late_slots = 0;
+
+        $sys_cond_s = ($sys === 'Masjid') 
+            ? "s.system_type = 'Masjid'" 
+            : "(s.system_type = 'Madrasa' OR s.system_type IS NULL OR s.system_type = '')";
+
+        // Check if status column exists in attendance
+        $has_status = false;
+        try {
+            $has_status = (bool)$pdo->query("SHOW COLUMNS FROM attendance LIKE 'status'")->fetch();
+        } catch (Throwable $e) {}
+        $status_sql = $has_status ? " OR (a.status IN ('P', 'Present', 'حاضر'))" : "";
+
+        // Check if exit_date column exists in students
+        $has_exit = false;
+        try {
+            $has_exit = (bool)$pdo->query("SHOW COLUMNS FROM students LIKE 'exit_date'")->fetch();
+        } catch (Throwable $e) {}
+        $exit_sql_a = $has_exit ? "AND (s.exit_date IS NULL OR s.exit_date >= a.date)" : "";
+        $exit_sql_pa = $has_exit ? "AND (s.exit_date IS NULL OR s.exit_date >= pa.date)" : "";
+        $exit_sql_dh = $has_exit ? "AND (s.exit_date IS NULL OR s.exit_date >= dh.date)" : "";
+
+        // 1. Regular Daily Attendance (As-Of scoped)
+        try {
+            $stmt_att = $pdo->prepare("
+                SELECT 
+                    COUNT(*) as total,
+                    SUM(CASE WHEN (
+                        a.status_1 IN ('P', 'Present', 'حاضر') OR (a.late_1 > 0)
+                        OR a.status_2 IN ('P', 'Present', 'حاضر') OR (a.late_2 > 0)
+                        OR (a.status_3 IN ('P', 'Present', 'حاضر'))
+                        OR (a.status_4 IN ('P', 'Present', 'حاضر'))
+                        $status_sql
+                    ) THEN 1 ELSE 0 END) as presents,
+                    SUM(CASE WHEN (
+                        a.late_1 > 0 OR a.late_2 > 0 OR a.late_3 > 0 OR a.late_4 > 0
+                    ) THEN 1 ELSE 0 END) as lates
+                FROM attendance a
+                JOIN students s ON a.student_id = s.id
+                WHERE a.date BETWEEN ? AND ? 
+                  AND (a.is_deleted = 0 OR a.is_deleted IS NULL)
+                  AND (a.tenant_id = ? OR a.tenant_id IS NULL OR a.tenant_id = 0)
+                  AND (s.tenant_id = ? OR s.tenant_id IS NULL OR s.tenant_id = 0)
+                  AND $sys_cond_s
+                  AND (s.admission_date IS NULL OR s.admission_date <= a.date)
+                  $exit_sql_a
+                  AND (s.graduation_date IS NULL OR s.graduation_date >= a.date)
+            ");
+            $stmt_att->execute([$start_date, $end_date, $tenant_id, $tenant_id]);
+            $row = $stmt_att->fetch(PDO::FETCH_ASSOC);
+            if ($row) {
+                $total_slots += (int)($row['total'] ?? 0);
+                $present_slots += (int)($row['presents'] ?? 0);
+                $late_slots += (int)($row['lates'] ?? 0);
+            }
+        } catch (Throwable $e) {}
+
+        // 2. Period Attendance (As-Of scoped)
+        try {
+            $stmt_pa = $pdo->prepare("
+                SELECT 
+                    COUNT(*) as total,
+                    SUM(CASE WHEN pa.status IN ('P', 'Present', 'حاضر') THEN 1 ELSE 0 END) as presents,
+                    SUM(CASE WHEN pa.status IN ('A', 'Absent', 'غیر حاضر') THEN 1 ELSE 0 END) as absents,
+                    SUM(CASE WHEN pa.status IN ('L', 'Leave', 'رخصت') THEN 1 ELSE 0 END) as leaves
+                FROM period_attendance pa
+                JOIN students s ON pa.student_id = s.id
+                WHERE pa.date BETWEEN ? AND ? 
+                  AND (pa.tenant_id = ? OR pa.tenant_id IS NULL OR pa.tenant_id = 0)
+                  AND (s.tenant_id = ? OR s.tenant_id IS NULL OR s.tenant_id = 0)
+                  AND $sys_cond_s
+                  AND (s.admission_date IS NULL OR s.admission_date <= pa.date)
+                  $exit_sql_pa
+                  AND (s.graduation_date IS NULL OR s.graduation_date >= pa.date)
+            ");
+            $stmt_pa->execute([$start_date, $end_date, $tenant_id, $tenant_id]);
+            $row_pa = $stmt_pa->fetch(PDO::FETCH_ASSOC);
+            if ($row_pa) {
+                $total_slots += (int)($row_pa['total'] ?? 0);
+                $present_slots += (int)($row_pa['presents'] ?? 0);
+                $absent_slots += (int)($row_pa['absents'] ?? 0);
+                $leave_slots += (int)($row_pa['leaves'] ?? 0);
+            }
+        } catch (Throwable $e) {}
+
+        // 3. Maktab Attendance (if Masjid mode)
+        if ($sys === 'Masjid') {
+            try {
+                $has_m_exit = (bool)$pdo->query("SHOW COLUMNS FROM maktab_students LIKE 'exit_date'")->fetch();
+                $m_exit_sql = $has_m_exit ? "AND (ms.exit_date IS NULL OR ms.exit_date >= ma.date)" : "";
+
+                $stmt_m = $pdo->prepare("
+                    SELECT 
+                        COUNT(*) as total,
+                        SUM(CASE WHEN ma.status IN ('P', 'Present', 'حاضر') THEN 1 ELSE 0 END) as presents,
+                        SUM(CASE WHEN ma.status IN ('A', 'Absent', 'غیر حاضر') THEN 1 ELSE 0 END) as absents,
+                        SUM(CASE WHEN ma.status IN ('L', 'Leave', 'رخصت') THEN 1 ELSE 0 END) as leaves
+                    FROM maktab_attendance ma
+                    JOIN maktab_students ms ON ma.student_id = ms.id
+                    WHERE ma.date BETWEEN ? AND ? 
+                      AND (ma.is_deleted = 0 OR ma.is_deleted IS NULL)
+                      AND (ma.tenant_id = ? OR ma.tenant_id IS NULL OR ma.tenant_id = 0)
+                      AND (ms.admission_date IS NULL OR ms.admission_date <= ma.date)
+                      $m_exit_sql
+                ");
+                $stmt_m->execute([$start_date, $end_date, $tenant_id]);
+                $row_m = $stmt_m->fetch(PDO::FETCH_ASSOC);
+                if ($row_m) {
+                    $total_slots += (int)($row_m['total'] ?? 0);
+                    $present_slots += (int)($row_m['presents'] ?? 0);
+                    $absent_slots += (int)($row_m['absents'] ?? 0);
+                    $leave_slots += (int)($row_m['leaves'] ?? 0);
+                }
+            } catch (Throwable $e) {}
+        }
+
+        // 4. Fallback to daily_hifz if 0 total
+        if ($total_slots === 0) {
+            try {
+                $stmt_dh = $pdo->prepare("
+                    SELECT 
+                        COUNT(*) as total,
+                        SUM(CASE WHEN dh.sabaq_status NOT IN ('غیر حاضر', 'Absent', 'A', 'رخصت', 'Leave', 'L') AND dh.sabaq_status != '' AND dh.sabaq_status IS NOT NULL THEN 1 ELSE 0 END) as presents
+                    FROM daily_hifz dh
+                    JOIN students s ON dh.student_id = s.id
+                    WHERE dh.date BETWEEN ? AND ? 
+                      AND (dh.tenant_id = ? OR dh.tenant_id IS NULL OR dh.tenant_id = 0)
+                      AND (s.tenant_id = ? OR s.tenant_id IS NULL OR s.tenant_id = 0)
+                      AND $sys_cond_s
+                      AND (s.admission_date IS NULL OR s.admission_date <= dh.date)
+                      $exit_sql_dh
+                      AND (s.graduation_date IS NULL OR s.graduation_date >= dh.date)
+                ");
+                $stmt_dh->execute([$start_date, $end_date, $tenant_id, $tenant_id]);
+                $row_dh = $stmt_dh->fetch(PDO::FETCH_ASSOC);
+                if ($row_dh && (int)($row_dh['total'] ?? 0) > 0) {
+                    $total_slots += (int)($row_dh['total'] ?? 0);
+                    $present_slots += (int)($row_dh['presents'] ?? 0);
+                }
+            } catch (Throwable $e) {}
+        }
+
+        $pct = $total_slots > 0 ? round(($present_slots / $total_slots) * 100, 1) : 0.0;
+        return [
+            'total_slots' => $total_slots,
+            'present_slots' => $present_slots,
+            'absent_slots' => $absent_slots,
+            'leave_slots' => $leave_slots,
+            'late_slots' => $late_slots,
+            'percentage' => $pct
+        ];
+    }
+}
 // Auto-create new tables for Hifz/Attendance features (only on explicit migration request)
 if (!function_exists('ensure_legacy_feature_tables')) {
     function ensure_legacy_feature_tables(PDO $pdo) {
@@ -289,6 +471,8 @@ try { $pdo->exec("ALTER TABLE finance ADD COLUMN computer_receipt_no INT DEFAULT
 try { $pdo->exec("ALTER TABLE heads ADD COLUMN is_deleted TINYINT(1) DEFAULT 0"); } catch (Throwable $e) {}
 try { $pdo->exec("ALTER TABLE acc_chart_of_accounts ADD COLUMN system_type VARCHAR(50) DEFAULT 'Madrasa'"); } catch (Throwable $e) {}
 try { $pdo->exec("ALTER TABLE acc_chart_of_accounts ADD COLUMN is_deleted TINYINT(1) DEFAULT 0"); } catch (Throwable $e) {}
+try { $pdo->exec("ALTER TABLE admission_applications MODIFY COLUMN status VARCHAR(50) DEFAULT 'Pending'"); } catch (Throwable $e) {}
+try { $pdo->exec("ALTER TABLE admission_applications ADD COLUMN rejection_reason TEXT DEFAULT NULL"); } catch (Throwable $e) {}
 
 
     $examCols = [
@@ -370,8 +554,8 @@ if (isset($_GET['migrate_legacy_schema']) && $_GET['migrate_legacy_schema'] === 
 /**
  * XSS Protection Helper
  */
-function e($value) {
-    return htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
+if (!function_exists('e')) { function e($value) {
+    return htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8'); }
 }
 
 /**
@@ -1596,7 +1780,169 @@ if (!function_exists('ensure_phase2_tables')) {
             ensure_column($pdo, 'admission_inquiries', 'duration', "VARCHAR(50) DEFAULT ''");
             ensure_column($pdo, 'admission_inquiries', 'residence_status', "VARCHAR(50) DEFAULT ''");
             ensure_column($pdo, 'admission_inquiries', 'photo', "VARCHAR(255) DEFAULT ''");
+            $stdTables = ['students', 'maktab_students'];
+            $fullCols = [
+                'guardian_name' => "VARCHAR(150) DEFAULT ''",
+                'guardian_cnic' => "VARCHAR(30) DEFAULT ''",
+                'guardian_relation' => "VARCHAR(50) DEFAULT ''",
+                'guardian_address' => "TEXT DEFAULT NULL",
+                'prev_madaris' => "TEXT DEFAULT NULL",
+                'qualification' => "VARCHAR(100) DEFAULT ''",
+                'last_studied' => "VARCHAR(150) DEFAULT ''",
+                'leave_reason' => "TEXT DEFAULT NULL",
+                'dob' => "DATE DEFAULT NULL",
+                'email' => "VARCHAR(100) DEFAULT ''",
+                'class_name' => "VARCHAR(100) DEFAULT ''"
+            ];
+            foreach ($stdTables as $stbl) {
+                foreach ($fullCols as $fcol => $fdef) {
+                    ensure_column($pdo, $stbl, $fcol, $fdef);
+                }
+            }
         } catch (Throwable $e) {}
+    }
+}
+
+if (!function_exists('get_next_admission_number')) {
+    function get_next_admission_number(PDO $pdo, string $system_type = 'Madrasa', ?int $tenant_id = null, bool $increment = true): array {
+        if ($tenant_id === null && function_exists('get_current_tenant_id')) {
+            $tenant_id = (int)get_current_tenant_id();
+        }
+        $tenant_id = (int)($tenant_id ?: 1);
+
+        // 1. Ensure id_sequences table exists
+        try {
+            $pdo->exec("
+                CREATE TABLE IF NOT EXISTS id_sequences (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    tenant_id INT NOT NULL DEFAULT 1,
+                    seq_key VARCHAR(50) NOT NULL,
+                    current_val INT NOT NULL DEFAULT 0,
+                    hijri_year VARCHAR(10) NOT NULL DEFAULT '1448',
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    UNIQUE KEY uq_tenant_key (tenant_id, seq_key)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            ");
+        } catch (Throwable $e) {}
+
+        // 2. Determine Hijri Year (default 1448 or from settings)
+        $hijri_year = '1448';
+        try {
+            $hStmt = $pdo->prepare("SELECT setting_value FROM settings WHERE setting_key IN ('hijri_year', 'academic_year') AND tenant_id = ? LIMIT 1");
+            $hStmt->execute([$tenant_id]);
+            $val = $hStmt->fetchColumn();
+            if (!empty($val) && preg_match('/^\d{4}/', $val, $m)) {
+                $hijri_year = $m[0];
+            }
+        } catch (Throwable $e) {}
+
+        $seq_key = 'admission_' . strtolower($system_type);
+
+        // 3. Find current max serial from database across tables if not initialized
+        try {
+            $sStmt = $pdo->prepare("SELECT current_val, hijri_year FROM id_sequences WHERE tenant_id = ? AND seq_key = ? LIMIT 1");
+            $sStmt->execute([$tenant_id, $seq_key]);
+            $row = $sStmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$row) {
+                // Initialize from existing students / inquiries
+                $maxSerial = 1450; // Starting baseline
+                $tbl = ($system_type === 'Masjid') ? 'maktab_students' : 'students';
+                try {
+                    $q = $pdo->prepare("SELECT admission_number FROM $tbl WHERE tenant_id = ? AND admission_number != ''");
+                    $q->execute([$tenant_id]);
+                    while ($ad = $q->fetchColumn()) {
+                        if (preg_match('/(\d+)$/', $ad, $m)) {
+                            $num = (int)$m[1];
+                            if ($num > $maxSerial && $num < 999999) {
+                                $maxSerial = $num;
+                            }
+                        }
+                    }
+                } catch (Throwable $e) {}
+
+                // Also check admission_applications and admission_inquiries
+                try {
+                    $q2 = $pdo->prepare("SELECT admission_number FROM admission_inquiries WHERE tenant_id = ? AND admission_number != ''");
+                    $q2->execute([$tenant_id]);
+                    while ($ad = $q2->fetchColumn()) {
+                        if (preg_match('/(\d+)$/', $ad, $m)) {
+                            $num = (int)$m[1];
+                            if ($num > $maxSerial && $num < 999999) {
+                                $maxSerial = $num;
+                            }
+                        }
+                    }
+                } catch (Throwable $e) {}
+
+                $pdo->prepare("INSERT INTO id_sequences (tenant_id, seq_key, current_val, hijri_year) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE current_val = GREATEST(current_val, VALUES(current_val))")
+                    ->execute([$tenant_id, $seq_key, $maxSerial, $hijri_year]);
+                $current_val = $maxSerial;
+            } else {
+                $current_val = (int)$row['current_val'];
+                if (!empty($row['hijri_year'])) {
+                    $hijri_year = $row['hijri_year'];
+                }
+            }
+
+            $candidate_serial = $current_val + 1;
+            $tbl = ($system_type === 'Masjid') ? 'maktab_students' : 'students';
+            $collision = true;
+            $max_tries = 5000;
+
+            while ($collision && $max_tries > 0) {
+                $max_tries--;
+                $candidate_adm_no = $hijri_year . '-' . str_pad((string)$candidate_serial, 4, '0', STR_PAD_LEFT);
+                $exists = false;
+
+                try {
+                    $c1 = $pdo->prepare("SELECT 1 FROM $tbl WHERE admission_number = ? AND tenant_id = ? LIMIT 1");
+                    $c1->execute([$candidate_adm_no, $tenant_id]);
+                    if ($c1->fetch()) $exists = true;
+                } catch (Throwable $e) {}
+
+                if (!$exists) {
+                    try {
+                        $c2 = $pdo->prepare("SELECT 1 FROM admission_inquiries WHERE admission_number = ? AND tenant_id = ? LIMIT 1");
+                        $c2->execute([$candidate_adm_no, $tenant_id]);
+                        if ($c2->fetch()) $exists = true;
+                    } catch (Throwable $e) {}
+                }
+
+                if (!$exists) {
+                    try {
+                        $c3 = $pdo->prepare("SELECT 1 FROM admission_applications WHERE admission_number = ? AND tenant_id = ? LIMIT 1");
+                        $c3->execute([$candidate_adm_no, $tenant_id]);
+                        if ($c3->fetch()) $exists = true;
+                    } catch (Throwable $e) {}
+                }
+
+                if ($exists) {
+                    $candidate_serial++;
+                } else {
+                    $collision = false;
+                }
+            }
+
+            if ($increment) {
+                $pdo->prepare("UPDATE id_sequences SET current_val = ?, updated_at = NOW() WHERE tenant_id = ? AND seq_key = ?")->execute([$candidate_serial, $tenant_id, $seq_key]);
+            }
+
+            $next_serial = $candidate_serial;
+            $adm_no = $hijri_year . '-' . str_pad((string)$next_serial, 4, '0', STR_PAD_LEFT);
+            return [
+                'admission_number' => $adm_no,
+                'serial_no' => $next_serial,
+                'hijri_year' => $hijri_year
+            ];
+        } catch (Throwable $e) {
+            $fallback_serial = 1455;
+            return [
+                'admission_number' => $hijri_year . '-' . $fallback_serial,
+                'serial_no' => $fallback_serial,
+                'hijri_year' => $hijri_year
+            ];
+        }
     }
 }
 
