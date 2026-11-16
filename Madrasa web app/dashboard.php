@@ -1,8 +1,23 @@
-<?php require_once 'db.php'; 
+<?php 
+ob_start();
+if (file_exists(__DIR__ . '/session_init.php')) { 
+    require_once __DIR__ . '/session_init.php'; 
+}
+if (session_status() === PHP_SESSION_NONE) { 
+    if (function_exists('madrasa_safe_session_start')) {
+        madrasa_safe_session_start();
+    } else {
+        @session_start();
+    }
+}
+require_once 'db.php'; 
 
 $sys = $_SESSION['system_type'] ?? 'Madrasa';
 if ($sys === 'Masjid') {
-    header("Location: masjid_dashboard.php");
+    if (!headers_sent()) {
+        header("Location: masjid_dashboard.php");
+    }
+    echo "<script>window.location.replace('masjid_dashboard.php');</script>";
     exit;
 }
 
@@ -39,7 +54,10 @@ if (in_array($role, ['admin', 'nazim', 'teacher', 'mudarris', 'superadmin'], tru
         // صرف مدرسہ کے فعال اور غیر ڈیلیٹ شدہ طلباء گنیں (بلحاظ پرائیویسی فلٹر)
         $total_students = (int)$pdo->query("SELECT COUNT(*) FROM students WHERE (is_deleted=0 OR is_deleted IS NULL) AND $active_std_status AND (system_type='Madrasa' OR system_type IS NULL OR system_type='') $t_dash_cond AND ($privacy_std_cond)")->fetchColumn();
         $total_alumni   = (int)$pdo->query("SELECT COUNT(*) FROM students WHERE (is_deleted=0 OR is_deleted IS NULL) AND (status='Alumni' OR status='فارغ التحصیل') AND (system_type='Madrasa' OR system_type IS NULL OR system_type='') $t_dash_cond AND ($privacy_std_cond)")->fetchColumn();
-        $total_teachers = (int)$pdo->query("SELECT COUNT(*) FROM teachers WHERE (is_deleted=0 OR is_deleted IS NULL) AND (status='Active' OR status='' OR status IS NULL) AND (system_type='Madrasa' OR system_type IS NULL OR system_type='') $t_dash_cond")->fetchColumn();
+        $total_teachers = (int)$pdo->query("SELECT COUNT(*) FROM teachers WHERE (is_deleted=0 OR is_deleted IS NULL) AND (status='Active' OR status='حاضر' OR status='فعال' OR status='' OR status IS NULL) AND (system_type='Madrasa' OR system_type IS NULL OR system_type='') $t_dash_cond")->fetchColumn();
+        $total_registered_teachers = (int)$pdo->query("SELECT COUNT(*) FROM teachers WHERE (is_deleted=0 OR is_deleted IS NULL) AND (system_type='Madrasa' OR system_type IS NULL OR system_type='') $t_dash_cond")->fetchColumn();
+        $total_teaching_faculty = (int)$pdo->query("SELECT COUNT(*) FROM teachers WHERE (is_deleted=0 OR is_deleted IS NULL) AND (status='Active' OR status='حاضر' OR status='فعال' OR status='' OR status IS NULL) AND (staff_type='Teacher' OR staff_type IS NULL OR staff_type='') AND (system_type='Madrasa' OR system_type IS NULL OR system_type='') $t_dash_cond")->fetchColumn();
+        $total_other_staff_members = (int)$pdo->query("SELECT COUNT(*) FROM teachers WHERE (is_deleted=0 OR is_deleted IS NULL) AND (status='Active' OR status='حاضر' OR status='فعال' OR status='' OR status IS NULL) AND staff_type IS NOT NULL AND staff_type != '' AND staff_type != 'Teacher' AND (system_type='Madrasa' OR system_type IS NULL OR system_type='') $t_dash_cond")->fetchColumn();
         $total_notices  = (int)$pdo->query("SELECT COUNT(*) FROM notices WHERE (is_deleted=0 OR is_deleted IS NULL) $t_dash_cond")->fetchColumn();
         $total_classes  = $allowed_cls_count;
         
@@ -50,7 +68,7 @@ if (in_array($role, ['admin', 'nazim', 'teacher', 'mudarris', 'superadmin'], tru
             FROM attendance a
             JOIN students s ON a.student_id = s.id
             WHERE a.date = ? AND a.tenant_id = ? AND s.tenant_id = ? AND (a.is_deleted=0 OR a.is_deleted IS NULL)
-              AND (s.system_type='Madrasa' OR s.system_type IS NULL OR s.system_type='')
+              AND (s.system_type='Madrasa' OR s.system_type IS NULL OR s.system_type='') AND (s.admission_date IS NULL OR s.admission_date <= a.date) AND (s.exit_date IS NULL OR s.exit_date >= a.date) AND (s.graduation_date IS NULL OR s.graduation_date >= a.date)
               AND ($privacy_s_std_cond)
         ");
         $stmt_today->execute([$today, $tenant_id_dash, $tenant_id_dash]);
@@ -74,40 +92,31 @@ if (in_array($role, ['admin', 'nazim', 'teacher', 'mudarris', 'superadmin'], tru
             }
         }
         $pct = function($value) use ($today_total) {
-            return $today_total > 0 ? round(($value / $today_total) * 100) : 0;
+            return $today_total > 0 ? min(100, max(0, (int)round(($value / $today_total) * 100))) : 0;
         };
         $present_today_pct = $pct($today_present);
         $absent_today_pct = $pct($today_absent);
         $leave_today_pct = $pct($today_leave);
         $late_today_pct = $pct($today_late);
+        if ($today_total > 0) {
+            $sum_p = $present_today_pct + $absent_today_pct + $leave_today_pct + $late_today_pct;
+            if ($sum_p > 100) {
+                $diff = $sum_p - 100;
+                if ($present_today_pct >= $diff) { $present_today_pct -= $diff; }
+                elseif ($absent_today_pct >= $diff) { $absent_today_pct -= $diff; }
+            }
+        }
         
-        // Monthly Attendance (Madrasa)
+        // Monthly Attendance (Phase 4 / H-5 As-Of Unified Canonical Source)
         $first_day = date('Y-m-01');
-        $stmt_pos = $pdo->prepare("
-            SELECT COUNT(*) FROM attendance a 
-            JOIN students s ON a.student_id = s.id 
-            WHERE a.date >= ? AND a.tenant_id = ? AND s.tenant_id = ? AND (a.is_deleted=0 OR a.is_deleted IS NULL)
-              AND (s.system_type='Madrasa' OR s.system_type IS NULL OR s.system_type='')
-              AND ($privacy_s_std_cond)
-        ");
-        $stmt_pos->execute([$first_day, $tenant_id_dash, $tenant_id_dash]);
-        $total_possible = (int)$stmt_pos->fetchColumn();
-
-        $stmt_pres = $pdo->prepare("
-            SELECT COUNT(*) FROM attendance a
-            JOIN students s ON a.student_id = s.id
-            WHERE a.date >= ? AND a.tenant_id = ? AND s.tenant_id = ? AND (a.is_deleted=0 OR a.is_deleted IS NULL)
-              AND (a.status_1='P' OR a.status_2='P' OR a.status_3='P' OR a.status_4='P')
-              AND (s.system_type='Madrasa' OR s.system_type IS NULL OR s.system_type='')
-              AND ($privacy_s_std_cond)
-        ");
-        $stmt_pres->execute([$first_day, $tenant_id_dash, $tenant_id_dash]);
-        $total_present = (int)$stmt_pres->fetchColumn();
-        $monthly_att_percent = $total_possible > 0 ? round(($total_present / $total_possible) * 100, 1) : 0;
+        $canonical_monthly = get_canonical_attendance_stats($pdo, $first_day, $today, $tenant_id_dash, $sys);
+        $total_possible = $canonical_monthly['total_slots'];
+        $total_present = $canonical_monthly['present_slots'];
+        $monthly_att_percent = $canonical_monthly['percentage'];
 
         // رواں ماہ کے خالص آپریشنل اخراجات (مدرسہ - قرضہ جات کی ادائیگی کو الگ رکھتے ہوئے)
         try {
-            $stmt_exp = $pdo->prepare("SELECT SUM(amount) FROM finance WHERE LOWER(type)='expense' AND tenant_id = ? AND (is_loan = 0 OR is_loan IS NULL) AND (is_deleted=0 OR is_deleted IS NULL) AND date >= ? AND (system_type='Madrasa' OR system_type IS NULL OR system_type='')");
+            $stmt_exp = $pdo->prepare("SELECT SUM(amount) FROM finance WHERE LOWER(type)='expense' AND tenant_id = ? AND (is_deleted=0 OR is_deleted IS NULL) AND date >= ? AND (system_type='Madrasa' OR system_type IS NULL OR system_type='')");
             $stmt_exp->execute([$tenant_id_dash, $first_day]);
             $current_month_expense = $stmt_exp->fetchColumn();
             $monthly_expense = (float)($current_month_expense ?? 0);
@@ -167,7 +176,7 @@ if (in_array($role, ['admin', 'nazim', 'teacher', 'mudarris', 'superadmin'], tru
                        COUNT(er.id) as exams_count
                 FROM exam_results er
                 JOIN students s ON er.student_id = s.id
-                WHERE s.tenant_id = ? AND (s.is_deleted=0 OR s.is_deleted IS NULL) AND (s.system_type='Madrasa' OR s.system_type IS NULL OR s.system_type='')
+                WHERE s.tenant_id = ? AND (s.is_deleted=0 OR s.is_deleted IS NULL) AND (s.system_type='Madrasa' OR s.system_type IS NULL OR s.system_type='') AND ($privacy_s_std_cond)
                 GROUP BY s.id, s.name, s.father_name, s.class
                 ORDER BY avg_marks DESC
                 LIMIT 5
@@ -181,7 +190,7 @@ if (in_array($role, ['admin', 'nazim', 'teacher', 'mudarris', 'superadmin'], tru
                     SELECT id, name, father_name, class, NULL as avg_marks, 0 as exams_count
                     FROM students
                     WHERE tenant_id = ? AND (is_deleted=0 OR is_deleted IS NULL) AND (status='Active' OR status='' OR status IS NULL)
-                      AND (system_type='Madrasa' OR system_type IS NULL OR system_type='')
+                      AND (system_type='Madrasa' OR system_type IS NULL OR system_type='') AND ($privacy_std_cond)
                     ORDER BY id DESC LIMIT 5
                 ");
                 $stmt_top2->execute([$tenant_id_dash]);
@@ -243,8 +252,8 @@ if (in_array($role, ['admin', 'nazim', 'teacher', 'mudarris', 'superadmin'], tru
             <a href="teachers.php" class="text-decoration-none">
                 <div class="stat-card bg-gradient-blue h-100">
                     <div class="stat-icon"><i class="fas fa-users"></i></div>
-                    <div class="stat-value"><?php echo $total_teachers; ?></div>
-                    <div class="stat-label"><?php echo t('active_teachers'); ?></div>
+                    <div class="stat-value"><?php echo $total_teachers; ?><small style="font-size: 0.85rem; font-weight: normal; opacity: 0.85;"> / <?php echo $total_registered_teachers; ?></small></div>
+                    <div class="stat-label"><?php echo ($lang === 'ur') ? "کل فعال عملہ (اساتذہ: {$total_teaching_faculty} | دیگر: {$total_other_staff_members}) [فعال / رجسٹرڈ]" : "Active Staff (Faculty: {$total_teaching_faculty} | Staff: {$total_other_staff_members}) [Active / Total]"; ?></div>
                 </div>
             </a>
         </div>
@@ -434,7 +443,7 @@ if (in_array($role, ['admin', 'nazim', 'teacher', 'mudarris', 'superadmin'], tru
                         </thead>
                         <tbody>
                             <?php
-                            $stmt_recent = $pdo->prepare("SELECT * FROM students WHERE tenant_id = ? AND (is_deleted=0 OR is_deleted IS NULL) ORDER BY id DESC LIMIT 5");
+                            $stmt_recent = $pdo->prepare("SELECT * FROM students WHERE tenant_id = ? AND (is_deleted=0 OR is_deleted IS NULL) AND (system_type='Madrasa' OR system_type IS NULL OR system_type='') AND ($privacy_std_cond) ORDER BY id DESC LIMIT 5");
                             $stmt_recent->execute([$tenant_id_dash]);
                             while($row = $stmt_recent->fetch(PDO::FETCH_ASSOC)) {
                                 echo "<tr><td class='px-4 text-muted'>#{$row['id']}</td><td class='fw-bold text-primary'>{$row['name']}</td><td>{$row['father_name']}</td><td>".translateDate($row['admission_date'])."</td></tr>";

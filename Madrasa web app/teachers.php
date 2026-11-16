@@ -148,6 +148,7 @@ function teacher_format_period_summary($raw) {
 
 // --- ایکشن: ڈیٹا محفوظ کریں ---
 if (isset($_POST['save_teacher'])) {
+    validate_csrf_or_abort();
     try {
         $pdo->beginTransaction();
 
@@ -165,26 +166,34 @@ if (isset($_POST['save_teacher'])) {
         $daily_deduction_rate = !empty($_POST['daily_deduction_rate']) ? $_POST['daily_deduction_rate'] : 0;
         $j_date = !empty($_POST['joining_date']) ? $_POST['joining_date'] : date('Y-m-d');
         $status = !empty($_POST['status']) ? $_POST['status'] : 'Active';
+        $staff_type = (isset($_POST['staff_type']) && in_array($_POST['staff_type'], ['Teacher','Imam','Muazzin','Cook','Khadim','Cleaner','Peon','Chowkidar','Clerk','Other'], true)) ? $_POST['staff_type'] : 'Teacher';
+        $designation = (isset($_POST['admin_designation']) && in_array($_POST['admin_designation'], ['Mohtamim','Nazim','Accountant'], true)) ? $_POST['admin_designation'] : null;
         
         $teacher_id = null;
 
         // اگر Edit ID ہے تو اپڈیٹ کریں
         if (!empty($_POST['edit_id'])) {
             $teacher_id = $_POST['edit_id'];
-            $sql = "UPDATE teachers SET name=?, father_name=?, phone=?, cnic=?, qualification=?, address=?, salary=?, house_rent=?, medical_allowance=?, travel_allowance=?, daily_deduction_rate=?, joining_date=?, status=? WHERE id=? AND tenant_id=?";
+            $sql = "UPDATE teachers SET name=?, father_name=?, phone=?, cnic=?, qualification=?, address=?, salary=?, house_rent=?, medical_allowance=?, travel_allowance=?, daily_deduction_rate=?, joining_date=?, status=?, staff_type=?, admin_designation=? WHERE id=? AND tenant_id=?";
             $stmt = $pdo->prepare($sql);
-            $stmt->execute([$name, $fname, $phone, $cnic, $qual, $addr, $salary, $house_rent, $medical_allowance, $travel_allowance, $daily_deduction_rate, $j_date, $status, $teacher_id, $cur_tenant_id]);
+            $stmt->execute([$name, $fname, $phone, $cnic, $qual, $addr, $salary, $house_rent, $medical_allowance, $travel_allowance, $daily_deduction_rate, $j_date, $status, $staff_type, $designation, $teacher_id, $cur_tenant_id]);
             $msg = "<div class='alert alert-success fw-bold'>✅ ریکارڈ کامیابی سے اپڈیٹ ہو گیا!</div>";
         } 
         // ورنہ نیا ریکارڈ ڈالیں
         else {
             $sys = $_SESSION['system_type'] ?? 'Madrasa';
             $today_date = date('Y-m-d');
-            $sql = "INSERT INTO teachers (name, father_name, phone, cnic, qualification, address, salary, house_rent, medical_allowance, travel_allowance, daily_deduction_rate, joining_date, status, status_change_date, system_type, tenant_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            $sql = "INSERT INTO teachers (name, father_name, phone, cnic, qualification, address, salary, house_rent, medical_allowance, travel_allowance, daily_deduction_rate, joining_date, status, status_change_date, staff_type, admin_designation, system_type, tenant_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
             $stmt = $pdo->prepare($sql);
-            $stmt->execute([$name, $fname, $phone, $cnic, $qual, $addr, $salary, $house_rent, $medical_allowance, $travel_allowance, $daily_deduction_rate, $j_date, $status, $today_date, $sys, $cur_tenant_id]);
+            $stmt->execute([$name, $fname, $phone, $cnic, $qual, $addr, $salary, $house_rent, $medical_allowance, $travel_allowance, $daily_deduction_rate, $j_date, $status, $today_date, $staff_type, $designation, $sys, $cur_tenant_id]);
             $teacher_id = $pdo->lastInsertId();
             $msg = "<div class='alert alert-success fw-bold'>✅ نیا استاد شامل کر لیا گیا!</div>";
+            $chk_dupe = $pdo->prepare("SELECT id, name, father_name, phone FROM teachers WHERE TRIM(name) = TRIM(?) AND tenant_id = ? AND (is_deleted = 0 OR is_deleted IS NULL) AND id != ?");
+            $chk_dupe->execute([$name, $cur_tenant_id, (int)$teacher_id]);
+            $dupe_teacher = $chk_dupe->fetch(PDO::FETCH_ASSOC);
+            if ($dupe_teacher) {
+                $msg .= "<div class='alert alert-warning fw-bold shadow-sm mt-2'><i class='fas fa-exclamation-triangle me-2'></i> توجہ فرمائیں: اس نام ('" . htmlspecialchars($name) . "') کے ساتھ پہلے سے بھی استاد درج ہیں (ولدیت: " . htmlspecialchars($dupe_teacher['father_name'] ?? '-') . "، فون: " . htmlspecialchars($dupe_teacher['phone'] ?? '-') . ")۔</div>";
+            }
         }
 
         if ($teacher_id) {
@@ -305,7 +314,22 @@ try { $pdo->exec("ALTER TABLE teachers ADD COLUMN status_reason TEXT NULL"); } c
 try { $pdo->exec("ALTER TABLE teachers ADD COLUMN status_change_date VARCHAR(20) NULL"); } catch (PDOException $e) {}
 
 // --- ایکشن: اسٹیٹس تبدیلی (Leave / Terminate / Active) ---
+// F-EXCL: standing payroll exclusion toggle (from the teachers list)
+if (isset($_POST['toggle_payroll_excluded'])) {
+    validate_csrf_or_abort();
+    try {
+        $tg_id = (int)($_POST['teacher_id'] ?? 0);
+        $tg_val = (isset($_POST['new_val']) && $_POST['new_val'] === '1') ? 1 : 0;
+        $tg_stmt = $pdo->prepare("UPDATE teachers SET payroll_excluded = ? WHERE id = ? AND tenant_id = ?");
+        $tg_stmt->execute([$tg_val, $tg_id, $cur_tenant_id]);
+        $msg = "<div class='alert alert-success'>✅ پے رول شمولیت کی حالت تبدیل ہو گئی!</div>";
+    } catch (Exception $e) {
+        $msg = "<div class='alert alert-danger'>خرابی: " . $e->getMessage() . "</div>";
+    }
+}
+
 if (isset($_POST['change_teacher_status'])) {
+    validate_csrf_or_abort();
     try {
         $t_id = (int)$_POST['teacher_id'];
         $new_status = $_POST['new_status'] ?? 'Active';
@@ -320,7 +344,18 @@ if (isset($_POST['change_teacher_status'])) {
 }
 
 // --- ایکشن: ڈیلیٹ ---
-if (isset($_GET['delete'])) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_teacher'])) {
+    validate_csrf_or_abort();
+    try {
+        $del_tid = (int)$_POST['teacher_id'];
+        $pdo->prepare("UPDATE teachers SET is_deleted = 1 WHERE id = ? AND (tenant_id = ? OR tenant_id IS NULL OR tenant_id = 0)")->execute([$del_tid, $cur_tenant_id]);
+        echo "<script>window.location='teachers.php';</script>";
+        exit;
+    } catch (Exception $e) {
+        $msg = "<div class='alert alert-danger'>اس ریکارڈ کو ڈیلیٹ نہیں کیا جا سکتا۔</div>";
+    }
+}
+if (false && isset($_GET['delete'])) {
     try {
         $pdo->prepare("UPDATE teachers SET is_deleted = 1 WHERE id = ? AND tenant_id = ?")->execute([$_GET['delete'], $cur_tenant_id]);
         echo "<script>window.location='teachers.php';</script>";
@@ -346,7 +381,17 @@ if ($status_filter === 'active') {
     $filter_sql = " AND (status = 'Inactive' OR status LIKE '%غیر فعال%')";
 }
 
-$teachers = $pdo->query("SELECT * FROM teachers WHERE $sys_cond AND tenant_id = $cur_tenant_id AND (is_deleted = 0 OR is_deleted IS NULL) $filter_sql ORDER BY 
+$tab = $_GET['tab'] ?? 'teachers';
+if (!in_array($tab, ['teachers', 'staff', 'admin'], true)) { $tab = 'teachers'; }
+if ($tab === 'staff') { $tab_sql = " AND staff_type IS NOT NULL AND staff_type != '' AND staff_type != 'Teacher'"; }
+elseif ($tab === 'admin') { $tab_sql = " AND admin_designation IS NOT NULL AND admin_designation != ''"; }
+else { $tab_sql = " AND (staff_type = 'Teacher' OR staff_type IS NULL OR staff_type = '')"; }
+$cnt_teachers_tab = $pdo->query("SELECT COUNT(*) FROM teachers WHERE $sys_cond AND tenant_id = $cur_tenant_id AND (is_deleted = 0 OR is_deleted IS NULL) AND (staff_type = 'Teacher' OR staff_type IS NULL OR staff_type = '')")->fetchColumn();
+$cnt_staff_tab = $pdo->query("SELECT COUNT(*) FROM teachers WHERE $sys_cond AND tenant_id = $cur_tenant_id AND (is_deleted = 0 OR is_deleted IS NULL) AND staff_type IS NOT NULL AND staff_type != '' AND staff_type != 'Teacher'")->fetchColumn();
+$cnt_admin_tab = $pdo->query("SELECT COUNT(*) FROM teachers WHERE $sys_cond AND tenant_id = $cur_tenant_id AND (is_deleted = 0 OR is_deleted IS NULL) AND admin_designation IS NOT NULL AND admin_designation != ''")->fetchColumn();
+$staff_type_labels = ['Teacher' => 'استاد', 'Imam' => 'امام و خطیب', 'Muazzin' => 'مؤذن', 'Cook' => 'باورچی', 'Khadim' => 'خادم', 'Cleaner' => 'صفائی والا', 'Peon' => 'نائب قاصد', 'Chowkidar' => 'چوکیدار', 'Clerk' => 'دفتری / محاسب', 'Other' => 'دیگر'];
+$designation_labels = ['Mohtamim' => 'مہتمم', 'Nazim' => 'ناظم', 'Accountant' => 'اکاؤنٹنٹ'];
+$teachers = $pdo->query("SELECT * FROM teachers WHERE $sys_cond AND tenant_id = $cur_tenant_id AND (is_deleted = 0 OR is_deleted IS NULL) $filter_sql $tab_sql ORDER BY 
     CASE 
         WHEN status IS NULL OR status = '' OR status = 'Active' OR status = 'حاضر' OR status = 'فعال' THEN 0
         WHEN status = 'On Leave' OR status = 'رخصت پر' THEN 1
@@ -434,7 +479,7 @@ if ($edit_data && !empty($classes_list)) {
 <div class="container-fluid">
     <div class="row mb-3 align-items-center">
         <div class="col-md-6">
-            <h3 class="text-primary fw-bold"><i class="fas fa-chalkboard-teacher me-2"></i> <?php echo t('teachers'); ?> ریکارڈ</h3>
+            <h3 class="text-primary fw-bold"><i class="fas fa-chalkboard-teacher me-2"></i> اساتذہ و عملہ ریکارڈ</h3>
         </div>
         <div class="col-md-6 text-md-end">
             <button type="button" class="btn btn-primary fw-bold px-3 py-2 shadow-sm" data-bs-toggle="collapse" data-bs-target="#teacherFormCollapse" aria-expanded="<?php echo $edit_data ? 'true' : 'false'; ?>">
@@ -454,7 +499,8 @@ if ($edit_data && !empty($classes_list)) {
                 <?php endif; ?>
             </div>
             <div class="card-body">
-                <form method="POST">
+                <form method="POST" action="teachers.php?tab=<?php echo htmlspecialchars($_GET['tab'] ?? 'teachers'); ?>">
+                    <?php echo csrf_field(); ?>
                     <input type="hidden" name="edit_id" value="<?php echo $edit_data['id'] ?? ''; ?>">
                 <div class="row g-3">
                     <div class="col-md-3">
@@ -501,6 +547,24 @@ if ($edit_data && !empty($classes_list)) {
                     <div class="col-md-3">
                         <label class="fw-bold">تقرری کی تاریخ</label>
                         <input type="date" name="joining_date" class="form-control" value="<?php echo $edit_data['joining_date'] ?? date('Y-m-d'); ?>">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="fw-bold">قسم (استاد / عملہ)</label>
+                        <select name="staff_type" class="form-select">
+                            <?php $cur_type = $edit_data['staff_type'] ?? 'Teacher'; foreach ($staff_type_labels as $tk => $tv): ?>
+                            <option value="<?php echo $tk; ?>" <?php echo ($cur_type === $tk) ? 'selected' : ''; ?>><?php echo $tv; ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="fw-bold">انتظامی عہدہ</label>
+                        <select name="admin_designation" class="form-select">
+                            <?php $cur_desig = $edit_data['admin_designation'] ?? ''; ?>
+                            <option value="" <?php echo ($cur_desig === '' || $cur_desig === null) ? 'selected' : ''; ?>>کوئی عہدہ نہیں</option>
+                            <?php foreach ($designation_labels as $dk => $dv): ?>
+                            <option value="<?php echo $dk; ?>" <?php echo ($cur_desig === $dk) ? 'selected' : ''; ?>><?php echo $dv; ?></option>
+                            <?php endforeach; ?>
+                        </select>
                     </div>
                     <input type="hidden" name="status" value="<?php echo htmlspecialchars($edit_data['status'] ?? 'Active'); ?>">
                     
@@ -561,31 +625,42 @@ if ($edit_data && !empty($classes_list)) {
     </div>
 
     <!-- Filter Tabs -->
+        <ul class="nav nav-pills mb-3" id="staffMainTabs">
+        <li class="nav-item">
+            <a class="nav-link <?php echo $tab === 'teachers' ? 'active bg-primary' : 'text-dark bg-white border'; ?> fw-bold me-2 shadow-sm" href="teachers.php?tab=teachers&status_filter=<?php echo $status_filter; ?>"><?php echo ($lang === 'ur') ? 'تدریسی اساتذہ' : 'Teaching Faculty'; ?> <span class="badge bg-dark"><?php echo $cnt_teachers_tab; ?></span></a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link <?php echo $tab === 'staff' ? 'active bg-success' : 'text-success bg-white border'; ?> fw-bold me-2 shadow-sm" href="teachers.php?tab=staff&status_filter=<?php echo $status_filter; ?>"><?php echo ($lang === 'ur') ? 'دیگر عملہ / ملازمین' : 'Support Staff'; ?> <span class="badge bg-dark"><?php echo $cnt_staff_tab; ?></span></a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link <?php echo $tab === 'admin' ? 'active bg-warning text-dark' : 'text-warning text-dark bg-white border'; ?> fw-bold me-2 shadow-sm" href="teachers.php?tab=admin&status_filter=<?php echo $status_filter; ?>"><?php echo ($lang === 'ur') ? 'انتظامیہ' : 'Administration'; ?> <span class="badge bg-dark"><?php echo $cnt_admin_tab; ?></span></a>
+        </li>
+    </ul>
     <ul class="nav nav-pills mb-3" id="teacherStatusTabs">
         <li class="nav-item">
-            <a class="nav-link <?php echo $status_filter === 'all' ? 'active bg-primary' : 'text-dark bg-white border'; ?> fw-bold me-2 shadow-sm" href="teachers.php?status_filter=all">تمام اساتذہ</a>
+            <a class="nav-link <?php echo $status_filter === 'all' ? 'active bg-primary' : 'text-dark bg-white border'; ?> fw-bold me-2 shadow-sm" href="teachers.php?tab=<?php echo $tab; ?>&status_filter=all">تمام اساتذہ</a>
         </li>
         <li class="nav-item">
-            <a class="nav-link <?php echo $status_filter === 'active' ? 'active bg-success' : 'text-success bg-white border'; ?> fw-bold me-2 shadow-sm" href="teachers.php?status_filter=active">فعال / حاضر</a>
+            <a class="nav-link <?php echo $status_filter === 'active' ? 'active bg-success' : 'text-success bg-white border'; ?> fw-bold me-2 shadow-sm" href="teachers.php?tab=<?php echo $tab; ?>&status_filter=active">فعال / حاضر</a>
         </li>
         <li class="nav-item">
-            <a class="nav-link <?php echo $status_filter === 'on_leave' ? 'active bg-warning text-dark' : 'text-warning text-dark bg-white border'; ?> fw-bold me-2 shadow-sm" href="teachers.php?status_filter=on_leave">رخصت پر</a>
+            <a class="nav-link <?php echo $status_filter === 'on_leave' ? 'active bg-warning text-dark' : 'text-warning text-dark bg-white border'; ?> fw-bold me-2 shadow-sm" href="teachers.php?tab=<?php echo $tab; ?>&status_filter=on_leave">رخصت پر</a>
         </li>
         <li class="nav-item">
-            <a class="nav-link <?php echo $status_filter === 'resigned' ? 'active bg-secondary text-white' : 'text-secondary bg-white border'; ?> fw-bold me-2 shadow-sm" href="teachers.php?status_filter=resigned">مستعفی / علیحدہ شدہ</a>
+            <a class="nav-link <?php echo $status_filter === 'resigned' ? 'active bg-secondary text-white' : 'text-secondary bg-white border'; ?> fw-bold me-2 shadow-sm" href="teachers.php?tab=<?php echo $tab; ?>&status_filter=resigned">مستعفی / علیحدہ شدہ</a>
         </li>
         <li class="nav-item">
-            <a class="nav-link <?php echo $status_filter === 'terminated' ? 'active bg-danger' : 'text-danger bg-white border'; ?> fw-bold me-2 shadow-sm" href="teachers.php?status_filter=terminated">برطرف / فارغ</a>
+            <a class="nav-link <?php echo $status_filter === 'terminated' ? 'active bg-danger' : 'text-danger bg-white border'; ?> fw-bold me-2 shadow-sm" href="teachers.php?tab=<?php echo $tab; ?>&status_filter=terminated">برطرف / فارغ</a>
         </li>
         <li class="nav-item">
-            <a class="nav-link <?php echo $status_filter === 'inactive' ? 'active bg-dark text-white' : 'text-dark bg-white border'; ?> fw-bold me-2 shadow-sm" href="teachers.php?status_filter=inactive">غیر فعال</a>
+            <a class="nav-link <?php echo $status_filter === 'inactive' ? 'active bg-dark text-white' : 'text-dark bg-white border'; ?> fw-bold me-2 shadow-sm" href="teachers.php?tab=<?php echo $tab; ?>&status_filter=inactive">غیر فعال</a>
         </li>
     </ul>
 
     <div class="card shadow-sm border-0">
         <div class="card-header bg-white d-flex align-items-center justify-content-between">
-            <h5 class="mb-0 fw-bold text-primary"><i class="fas fa-list me-2"></i> اساتذہ کی فہرست</h5>
-            <span class="badge bg-primary"><?php echo count($teachers); ?> اساتذہ</span>
+            <h5 class="mb-0 fw-bold text-primary"><i class="fas fa-list me-2"></i> اساتذہ و عملہ کی فہرست</h5>
+            <span class="badge bg-primary"><?php echo count($teachers); ?> افراد</span>
         </div>
         <div class="card-body p-0">
             <div class="table-responsive">
@@ -655,6 +730,28 @@ if ($edit_data && !empty($classes_list)) {
                                 <td class="text-start ps-3 fw-bold" style="white-space: nowrap;">
                                     <?php echo $t['name']; ?>
                                     <br><small class="text-muted"><?php echo $t['father_name']; ?></small>
+                                    <div class="mt-1">
+                                        <?php if (!empty($t['payroll_excluded'])): ?>
+                                            <span class="badge bg-danger">پے رول سے مستثنیٰ</span>
+                                            <form method="POST" class="d-inline">
+                                                <?php echo csrf_field(); ?>
+                                                <input type="hidden" name="toggle_payroll_excluded" value="1">
+                                                <input type="hidden" name="teacher_id" value="<?php echo (int)$t['id']; ?>">
+                                                <input type="hidden" name="new_val" value="0">
+                                                <button type="submit" class="btn btn-sm btn-outline-success py-0 px-1" style="font-size:11px;">پے رول میں شامل کریں</button>
+                                            </form>
+                                        <?php else: ?>
+                                            <form method="POST" class="d-inline" onsubmit="return confirm('کیا آپ واقعی اس فرد کو پے رول سے خارج کرنا چاہتے ہیں؟');">
+                                                <?php echo csrf_field(); ?>
+                                                <input type="hidden" name="toggle_payroll_excluded" value="1">
+                                                <input type="hidden" name="teacher_id" value="<?php echo (int)$t['id']; ?>">
+                                                <input type="hidden" name="new_val" value="1">
+                                                <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-1" style="font-size:11px;">پے رول سے خارج کریں</button>
+                                            </form>
+                                        <?php endif; ?>
+                                    </div>
+                                    <?php if (!empty($t['staff_type']) && $t['staff_type'] !== 'Teacher'): ?><br><span class="badge bg-info text-dark"><?php echo $staff_type_labels[$t['staff_type']] ?? $t['staff_type']; ?></span><?php endif; ?>
+                                    <?php if (!empty($t['admin_designation'])): ?><br><span class="badge bg-warning text-dark"><?php echo $designation_labels[$t['admin_designation']] ?? $t['admin_designation']; ?></span><?php endif; ?>
                                 </td>
                                 <td style="white-space: nowrap;"><?php echo $t['phone']; ?></td>
                                 <td style="white-space: nowrap;"><?php echo $t['qualification']; ?></td>
@@ -667,7 +764,7 @@ if ($edit_data && !empty($classes_list)) {
                                         if (!empty($teacher_assignments[$tid]['hifz'])) {
                                             $has_assignment = true;
                                             foreach ($teacher_assignments[$tid]['hifz'] as $hc) {
-                                                echo "<span class='badge bg-success text-white'>$hc (Hifz)</span>";
+                                                echo "<span class='badge bg-success text-white'>$hc (حفظ)</span>";
                                             }
                                         }
                                         
@@ -676,7 +773,7 @@ if ($edit_data && !empty($classes_list)) {
                                             foreach ($teacher_assignments[$tid]['darse'] as $dc => $periods) {
                                                 sort($periods);
                                                 $p_str = implode(",", $periods);
-                                                echo "<span class='badge bg-info text-dark'>$dc [P: $p_str]</span>";
+                                                echo "<span class='badge bg-info text-dark'>$dc [پیریڈ: $p_str]</span>";
                                             }
                                         }
 
@@ -686,17 +783,17 @@ if ($edit_data && !empty($classes_list)) {
                                                 foreach ($decoded_p as $dc => $periods) {
                                                     $p_arr = (array)$periods;
                                                     sort($p_arr);
-                                                    $p_str = implode(",", $p_arr);
+                                                    $p_str = implode(", ", array_map(function($pk) { return teacher_period_label_by_key((string)$pk); }, $p_arr));
                                                     if (!empty($dc)) {
                                                         $has_assignment = true;
-                                                        echo "<span class='badge bg-info text-dark'>" . htmlspecialchars($dc) . (!empty($p_str) ? " [P: $p_str]" : "") . "</span>";
+                                                        echo "<span class='badge bg-info text-dark'>" . htmlspecialchars($dc) . (!empty($p_str) ? " [پیریڈ: $p_str]" : "") . "</span>";
                                                     }
                                                 }
                                             } else {
                                                 $period_summary = teacher_format_period_summary($t['assigned_periods']);
                                                 if (!empty($period_summary)) {
                                                     $has_assignment = true;
-                                                    echo "<span class='badge bg-info text-dark text-wrap'>P: " . htmlspecialchars($period_summary) . "</span>";
+                                                    echo "<span class='badge bg-info text-dark text-wrap'>پیریڈ: " . htmlspecialchars($period_summary) . "</span>";
                                                 }
                                             }
                                         }
@@ -745,7 +842,12 @@ if ($edit_data && !empty($classes_list)) {
                                         <i class="fas fa-user-clock"></i>
                                     </button>
                                     <a href="teachers.php?edit=<?php echo $t['id']; ?>" class="btn btn-sm btn-primary" title="ترمیم"><i class="fas fa-edit"></i></a>
-                                    <a href="teachers.php?delete=<?php echo $t['id']; ?>" class="btn btn-sm btn-danger" title="حذف" onclick="return confirm('کیا آپ واقعی ڈیلیٹ کرنا چاہتے ہیں؟')"><i class="fas fa-trash"></i></a>
+                                    <form method="POST" action="teachers.php" style="display:inline-block;" onsubmit="return confirm('کیا آپ واقعی ڈیلیٹ کرنا چاہتے ہیں؟');">
+                                        <?php echo csrf_field(); ?>
+                                        <input type="hidden" name="delete_teacher" value="1">
+                                        <input type="hidden" name="teacher_id" value="<?php echo $t['id']; ?>">
+                                        <button type="submit" class="btn btn-sm btn-danger" title="حذف"><i class="fas fa-trash"></i></button>
+                                    </form>
                                 </td>
                             </tr>
                             <?php endforeach; ?>
@@ -764,6 +866,7 @@ if ($edit_data && !empty($classes_list)) {
     <div class="modal-dialog">
         <div class="modal-content text-end" dir="rtl">
             <form method="POST" action="teachers.php">
+                <?php echo csrf_field(); ?>
                 <div class="modal-header bg-primary text-white justify-content-between">
                     <h5 class="modal-title fw-bold" id="teacherStatusModalLabel"><i class="fas fa-user-clock me-2"></i> استاد کا اسٹیٹس تبدیل کریں</h5>
                     <button type="button" class="btn-close btn-close-white ms-0" data-bs-dismiss="modal" aria-label="Close"></button>
