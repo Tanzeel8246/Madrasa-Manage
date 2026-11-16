@@ -1,5 +1,12 @@
 <?php 
-if (session_status() === PHP_SESSION_NONE) { session_start(); }
+if (file_exists(__DIR__ . '/session_init.php')) { require_once __DIR__ . '/session_init.php'; }
+if (session_status() === PHP_SESSION_NONE) { 
+    if (function_exists('madrasa_safe_session_start')) {
+        madrasa_safe_session_start();
+    } else {
+        @session_start(); 
+    }
+}
 
 // S25 4-Tier Language Resolution & Persistence (Session + Cookie + DB + LocalStorage)
 if (isset($_GET['lang']) && in_array($_GET['lang'], ['ur', 'en'], true)) {
@@ -24,10 +31,18 @@ try {
 header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
 header("Pragma: no-cache");
 $current_page = basename($_SERVER['PHP_SELF']);
+// Ensure session restoration from persistent auth cookie
+if (empty($_SESSION['user_id']) && function_exists('madrasa_restore_session_from_cookie')) {
+    madrasa_restore_session_from_cookie($pdo);
+}
+
 if (isset($_SESSION['user_id'])) {
-    if (isset($_SESSION['last_activity']) && (time() - (int)$_SESSION['last_activity'] > (86400 * 7))) {
+    if (isset($_SESSION['last_activity']) && (time() - (int)$_SESSION['last_activity'] > (86400 * 30))) {
         session_unset();
         session_destroy();
+        if (function_exists('madrasa_clear_auth_cookies')) {
+            madrasa_clear_auth_cookies();
+        }
         header("Location: login.php?timeout=1");
         exit;
     }
@@ -44,7 +59,19 @@ if (isset($_SESSION['user_id'])) {
                 $_SESSION['role'] = $cuRow['role'];
                 $_SESSION['name'] = $cuRow['name'];
                 if (!empty($cuRow['permissions'])) {
-                    $_SESSION['permissions'] = json_decode($cuRow['permissions'], true) ?: [];
+                    $perms = json_decode($cuRow['permissions'], true) ?: [];
+                    if (in_array(strtolower((string)$_SESSION['role']), ['admin', 'superadmin', 'super_admin', 'administrator'], true) && empty($perms)) {
+                        $perms = [
+                            'manage_students', 'manage_teachers', 'manage_attendance', 'manage_teacher_attendance',
+                            'manage_hifz', 'manage_academics', 'manage_finance', 'manage_erp',
+                            'manage_classes', 'manage_notices', 'manage_exams', 'manage_requests',
+                            'manage_settings', 'manage_stipends', 'manage_hostel', 'manage_library',
+                            'manage_inventory', 'manage_shop', 'manage_cms', 'manage_admissions',
+                            'manage_assets', 'manage_in_kind_donations', 'manage_loans', 'manage_website',
+                            'manage_complaints', 'add_complaint'
+                        ];
+                    }
+                    $_SESSION['permissions'] = $perms;
                 }
             }
         } catch (Throwable $e) {}
@@ -135,12 +162,15 @@ $smart_alerts_count = 0;
 if (isset($_SESSION['role']) && in_array($_SESSION['role'], ['admin', 'nazim', 'teacher'])) {
     try {
         $t_cond = " AND tenant_id = $current_tenant_id";
-        $p_fee = $pdo->query("SELECT COUNT(*) FROM fee_submissions WHERE status = 'Pending' AND (is_deleted = 0 OR is_deleted IS NULL) $t_cond")->fetchColumn();
-        $p_leave = $pdo->query("SELECT COUNT(*) FROM leave_applications WHERE status = 'Pending' AND (is_deleted = 0 OR is_deleted IS NULL) $t_cond")->fetchColumn();
-        $p_complaints = $pdo->query("SELECT COUNT(*) FROM parent_complaints WHERE status = 'Pending' AND (is_deleted = 0 OR is_deleted IS NULL) $t_cond")->fetchColumn();
+        $sys_val = $_SESSION['system_type'] ?? 'Madrasa';
+        $is_mas = ($sys_val === 'Masjid');
+        $sys_leaf_cond = $is_mas ? "system_type = 'Masjid'" : "(system_type = 'Madrasa' OR system_type IS NULL OR system_type = '')";
+        $p_fee = $is_mas ? 0 : (int)$pdo->query("SELECT COUNT(*) FROM fee_submissions WHERE status = 'Pending' AND (is_deleted = 0 OR is_deleted IS NULL) $t_cond")->fetchColumn();
+        $p_leave = $is_mas ? 0 : (int)$pdo->query("SELECT COUNT(*) FROM leave_applications WHERE status = 'Pending' AND (is_deleted = 0 OR is_deleted IS NULL) $t_cond")->fetchColumn();
+        $p_complaints = $is_mas ? 0 : (int)$pdo->query("SELECT COUNT(*) FROM parent_complaints WHERE status = 'Pending' AND (is_deleted = 0 OR is_deleted IS NULL) $t_cond")->fetchColumn();
         // Admission Applications pending count
         $p_admissions = 0;
-        try { $p_admissions = $pdo->query("SELECT COUNT(*) FROM admission_applications WHERE LOWER(status)='pending' $t_cond")->fetchColumn(); } catch(Exception $e){}
+        if (!$is_mas) { try { $p_admissions = (int)$pdo->query("SELECT COUNT(*) FROM admission_applications WHERE LOWER(status)='pending' $t_cond")->fetchColumn(); } catch(Exception $e){} }
 
         $sys_val = $_SESSION['system_type'] ?? 'Madrasa';
         $is_mas = ($sys_val === 'Masjid');
@@ -161,7 +191,7 @@ if (isset($_SESSION['role']) && in_array($_SESSION['role'], ['admin', 'nazim', '
         $daily_abs = 0;
         try {
             if ($is_mas) {
-                $daily_abs = (int)$pdo->query("SELECT COUNT(DISTINCT student_id) FROM period_attendance WHERE date = '$today_str' AND status IN ('A', 'Absent') AND (is_deleted = 0 OR is_deleted IS NULL) $t_cond")->fetchColumn();
+                $daily_abs = (int)$pdo->query("SELECT COUNT(DISTINCT student_id) FROM maktab_attendance WHERE date = '$today_str' AND status IN ('A', 'Absent', 'غائب', 'غیر حاضر') AND (is_deleted = 0 OR is_deleted IS NULL) $t_cond")->fetchColumn();
             } else {
                 $daily_abs = (int)$pdo->query("SELECT COUNT(DISTINCT student_id) FROM (
                     SELECT student_id FROM attendance WHERE date = '$today_str' AND (status_1 IN ('A', 'Absent') OR status_2 IN ('A', 'Absent') OR status_3 IN ('A', 'Absent') OR status_4 IN ('A', 'Absent')) AND (is_deleted = 0 OR is_deleted IS NULL) $t_cond
@@ -209,6 +239,7 @@ $role = isset($_SESSION['role']) ? $_SESSION['role'] : '';
 $user_name = isset($_SESSION['name']) ? $_SESSION['name'] : 'Guest';
 
 
+if (!function_exists('has_perm')) {
 function has_perm($perm) {
     if (!isset($_SESSION['role'])) return false;
     
@@ -257,6 +288,8 @@ function has_perm($perm) {
 
     $perms = $_SESSION['permissions'] ?? [];
     return has_permission($_SESSION['role'], $perms, $perm);
+}
+
 }
 
 if (!function_exists('get_today_hijri_date')) {
@@ -450,7 +483,7 @@ $system_type = $_SESSION['system_type'] ?? 'Madrasa';
                         <a href="students.php" class="list-group-item <?php echo basename($_SERVER['PHP_SELF'])=='students.php'?'active-link':''; ?>"><i class="fas fa-user-graduate me-2"></i> <?php echo ($lang=='ur') ? 'طلبہ ریکارڈ' : 'Students Record'; ?></a>
                         <?php endif; ?>
                         <?php if(has_perm('manage_teachers')): ?>
-                        <a href="teachers.php" class="list-group-item <?php echo basename($_SERVER['PHP_SELF'])=='teachers.php'?'active-link':''; ?>"><i class="fas fa-chalkboard-teacher me-2"></i> <?php echo ($lang=='ur') ? 'اساتذہ ریکارڈ' : 'Teachers Record'; ?></a>
+                        <a href="teachers.php" class="list-group-item <?php echo basename($_SERVER['PHP_SELF'])=='teachers.php'?'active-link':''; ?>"><i class="fas fa-chalkboard-teacher me-2"></i> <?php echo ($lang=='ur') ? 'اساتذہ و عملہ ریکارڈ' : 'Teachers & Staff Record'; ?></a>
                         <a href="teacher_leaves.php" class="list-group-item d-flex justify-content-between align-items-center <?php echo basename($_SERVER['PHP_SELF'])=='teacher_leaves.php'?'active-link':''; ?>">
                             <span><i class="fas fa-calendar-minus me-2"></i> <?php echo ($lang=='ur') ? 'اساتذہ رخصت' : 'Teacher Leaves'; ?></span>
                             <?php if(isset($p_teacher_leaves) && $p_teacher_leaves > 0): ?>
@@ -475,6 +508,7 @@ $system_type = $_SESSION['system_type'] ?? 'Madrasa';
                     <!-- وظائف عملہ (مسجد) -->
                     <?php if(has_perm('manage_masjid_stipends') || has_perm('manage_stipends')): ?>
                     <a href="acc_payroll.php" class="list-group-item <?php echo basename($_SERVER['PHP_SELF'])=='acc_payroll.php'?'active-link':''; ?>"><i class="fas fa-money-check-alt me-2 text-success"></i> <?php echo ($lang=='ur') ? 'وظائف عملہ' : 'Staff Stipends'; ?></a>
+                    <a href="payroll_report.php" class="list-group-item <?php echo basename($_SERVER['PHP_SELF'])=='payroll_report.php'?'active-link':''; ?>"><i class="fas fa-file-invoice-dollar me-2 text-primary"></i> <?php echo ($lang=='ur') ? 'پے رول رپورٹ' : 'Payroll Report'; ?></a>
                     <?php endif; ?>
 
                     <!-- ایڈوانس و قرضہ جات -->
@@ -510,9 +544,10 @@ $system_type = $_SESSION['system_type'] ?? 'Madrasa';
                     <!-- اعتکاف ریکارڈ -->
                     <a href="masjid_itikaf.php" class="list-group-item <?php echo basename($_SERVER['PHP_SELF'])=='masjid_itikaf.php'?'active-link':''; ?>"><i class="fas fa-user-clock me-2 text-success"></i> <?php echo ($lang=='ur') ? 'اعتکاف ریکارڈ' : 'Itikaf Record'; ?></a>
 
-                    <?php if($role == 'admin'): ?>
+                    <?php if(in_array($role, ['admin', 'superadmin'], true)): ?>
                     <a href="manage_users.php" class="list-group-item"><i class="fas fa-users-cog me-2"></i> <?php echo t('manage_users'); ?></a>
                     <a href="settings.php" class="list-group-item"><i class="fas fa-cog me-2"></i> <?php echo t('settings'); ?></a>
+                    <a href="backup.php" class="list-group-item <?php echo basename($_SERVER['PHP_SELF'])=='backup.php'?'active-link':''; ?>"><i class="fas fa-database me-2 text-primary"></i> <?php echo ($lang=='ur') ? 'بیک اپ و ری اسٹور' : 'Backup & Restore'; ?></a>
                     <?php endif; ?>
                 <?php endif; ?>
 
@@ -568,7 +603,7 @@ $system_type = $_SESSION['system_type'] ?? 'Madrasa';
                     <?php endif; ?>
 
                     <?php if(has_perm('manage_teachers')): ?>
-                    <a href="teachers.php" class="list-group-item <?php echo basename($_SERVER['PHP_SELF'])=='teachers.php'?'active-link':''; ?>"><i class="fas fa-chalkboard-teacher me-2"></i> <?php echo t('teachers'); ?></a>
+                    <a href="teachers.php" class="list-group-item <?php echo basename($_SERVER['PHP_SELF'])=='teachers.php'?'active-link':''; ?>"><i class="fas fa-chalkboard-teacher me-2"></i> <?php echo ($lang=='ur') ? 'اساتذہ و عملہ' : 'Teachers & Staff'; ?></a>
                     <?php endif; ?>
 
                     <?php if(has_perm('manage_teacher_attendance') || has_perm('manage_attendance')): ?>
@@ -631,7 +666,7 @@ $system_type = $_SESSION['system_type'] ?? 'Madrasa';
                     <?php 
                     $erp_pages = [
                         'simple_finance.php', 'in_kind_donations.php', 'assets.php', 'finance_report.php',
-                        'annual_report.php', 'fee_defaulters.php', 'acc_payroll.php', 'loans_management.php',
+                        'annual_report.php', 'fee_defaulters.php', 'acc_payroll.php', 'payroll_report.php', 'loans_management.php',
                         'staff_loans.php', 'finance.php', 'manage_departments.php', 'acc_chart.php',
                         'acc_vouchers.php', 'acc_ledger.php', 'acc_trial_balance.php', 'acc_income_statement.php',
                         'acc_balance_sheet.php', 'acc_invoices.php', 'recycle_bin.php'
@@ -665,6 +700,7 @@ $system_type = $_SESSION['system_type'] ?? 'Madrasa';
                         <?php endif; ?>
                         <?php if(has_perm('manage_stipends') || has_perm('manage_erp')): ?>
                         <a href="acc_payroll.php" class="list-group-item <?php echo basename($_SERVER['PHP_SELF'])=='acc_payroll.php'?'active-link':''; ?>"><i class="fas fa-money-check-alt me-2 text-success"></i> <?php echo ($lang=='ur') ? 'وظائف عملہ' : 'Staff Stipends'; ?></a>
+                    <a href="payroll_report.php" class="list-group-item <?php echo basename($_SERVER['PHP_SELF'])=='payroll_report.php'?'active-link':''; ?>"><i class="fas fa-file-invoice-dollar me-2 text-primary"></i> <?php echo ($lang=='ur') ? 'پے رول رپورٹ' : 'Payroll Report'; ?></a>
                         <?php endif; ?>
                         <?php if(has_perm('manage_loans') || has_perm('manage_erp')): ?>
                         <a href="loans_management.php" class="list-group-item <?php echo (basename($_SERVER['PHP_SELF'])=='loans_management.php' || basename($_SERVER['PHP_SELF'])=='staff_loans.php')?'active-link':''; ?>"><i class="fas fa-hand-holding-usd me-2 text-info"></i> <?php echo ($lang=='ur') ? 'ایڈوانس و قرض مینیجمنٹ' : 'Loans & Advances'; ?></a>
@@ -689,9 +725,10 @@ $system_type = $_SESSION['system_type'] ?? 'Madrasa';
                     <?php if(has_perm('manage_complaints') || in_array($role, ['admin', 'nazim'])): ?>
                     <a href="manage_complaints.php" class="list-group-item <?php echo basename($_SERVER['PHP_SELF'])=='manage_complaints.php'?'active-link':''; ?>"><i class="fas fa-exclamation-triangle me-2 text-danger"></i> <?php echo ($lang=='ur') ? 'شکایات کا ریکارڈ' : 'Complaints Record'; ?></a>
                     <?php endif; ?>
-                    <?php if($role == 'admin'): ?>
+                    <?php if(in_array($role, ['admin', 'superadmin'], true)): ?>
                     <a href="manage_users.php" class="list-group-item"><i class="fas fa-users-cog me-2"></i> <?php echo t('manage_users'); ?></a>
                     <a href="settings.php" class="list-group-item"><i class="fas fa-cog me-2"></i> <?php echo t('settings'); ?></a>
+                    <a href="backup.php" class="list-group-item <?php echo basename($_SERVER['PHP_SELF'])=='backup.php'?'active-link':''; ?>"><i class="fas fa-database me-2 text-primary"></i> <?php echo ($lang=='ur') ? 'بیک اپ و ری اسٹور' : 'Backup & Restore'; ?></a>
                     <?php endif; ?>
                 
                 <?php elseif($role == 'parent'): ?>
